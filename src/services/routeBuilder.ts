@@ -5,7 +5,7 @@ import { RouteParametersParsed } from '../utils/jsonSchema';
 import { bboxFromPoint } from '../utils/bbox';
 import { fallbackPerimeter, perimeterWaypoints } from './perimeter';
 import { generateLoop } from './loopGenerator';
-import { edgeKeys, penalizedRoute, sharedEdgeRatioSets } from '../utils/sharedEdges';
+import { edgeKeys, penalizedRoute, sharedEdgeRatioSets, EdgeSet } from '../utils/sharedEdges';
 
 interface BuildContext {
   params: RouteParametersParsed;
@@ -65,13 +65,13 @@ async function landmarkRoute(ctx: BuildContext, shape: string): Promise<BuiltRou
   let distance = 0;
   let time = 0;
   let ascend = 0;
-  let usedEdges = new Set<string>();
+  let usedEdges: EdgeSet = new Set<string>();
   for (let i = 0; i < legs.length - 1; i++) {
     const leg = await route([legs[i], legs[i + 1]], ctx.profile, { alternative: true });
     const edges = edgeKeys(leg.points);
     const overlap = sharedEdgeRatioSets(usedEdges, edges);
     if (overlap > 0.05) {
-      const alt = await penalizedRoute([legs[i], legs[i + 1]], ctx.profile);
+      const alt = await penalizedRoute([legs[i], legs[i + 1]], ctx.profile, usedEdges);
       const altEdges = edgeKeys(alt.points);
       const altOverlap = sharedEdgeRatioSets(usedEdges, altEdges);
       if (altOverlap < overlap) {
