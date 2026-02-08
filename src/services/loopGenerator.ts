@@ -11,6 +11,7 @@ interface Circuit {
   totalDistance: number;
   totalTime: number;
   totalAscend: number;
+  overlapRatio: number;
 }
 
 function generateBearings(count: number): number[] {
@@ -72,12 +73,14 @@ export async function generateLoop(
   for (const candidate of candidates.slice(0, 10)) {
     const p1 = await route([start, candidate.coords], profile);
     const p2 = await route([start, candidate.coords], profile, { alternative: true });
+    const overlap = sharedEdgeRatio(p1.points, p2.points);
     const circuit: Circuit = {
       path1: p1.points,
       path2: p2.points,
       totalDistance: p1.distance + p2.distance,
       totalTime: p1.time + p2.time,
       totalAscend: (p1.ascend ?? 0) + (p2.ascend ?? 0),
+      overlapRatio: overlap,
     };
     circuits.push(circuit);
   }
@@ -85,6 +88,8 @@ export async function generateLoop(
   circuits.sort((a, b) => {
     const distDiff = Math.abs(a.totalDistance - targetDistanceMeters) - Math.abs(b.totalDistance - targetDistanceMeters);
     if (distDiff !== 0) return distDiff;
+    const overlapDiff = a.overlapRatio - b.overlapRatio;
+    if (overlapDiff !== 0) return overlapDiff;
     return attractiveness(b) - attractiveness(a);
   });
   let best = circuits[0];
@@ -95,7 +100,10 @@ export async function generateLoop(
     best = await fineTune(best, start, targetDistanceMeters, profile);
   }
 
-  if (Math.abs(best.totalDistance - targetDistanceMeters) / targetDistanceMeters > 0.05) {
+  if (
+    Math.abs(best.totalDistance - targetDistanceMeters) / targetDistanceMeters > 0.05 ||
+    best.overlapRatio > 0.05
+  ) {
     throw new Error('Unable to reach target distance within tolerance');
   }
 
@@ -119,6 +127,30 @@ function attractiveness(c: Circuit): number {
   }
   const ideal = Math.PI * 2;
   return Math.max(0, 1 - Math.abs(totalAngle - ideal) / ideal);
+}
+
+function sharedEdgeRatio(
+  a: [number, number, number?][],
+  b: [number, number, number?][]
+): number {
+  const toKey = (p: [number, number, number?]) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`;
+  const edges = (coords: [number, number, number?][]) => {
+    const set = new Set<string>();
+    for (let i = 0; i < coords.length - 1; i++) {
+      const k1 = `${toKey(coords[i])}-${toKey(coords[i + 1])}`;
+      const k2 = `${toKey(coords[i + 1])}-${toKey(coords[i])}`;
+      set.add(k1);
+      set.add(k2);
+    }
+    return set;
+  };
+  const aEdges = edges(a);
+  const bEdges = edges(b);
+  let shared = 0;
+  bEdges.forEach((e) => {
+    if (aEdges.has(e)) shared++;
+  });
+  return aEdges.size ? shared / aEdges.size : 0;
 }
 
 async function fineTune(

@@ -11,6 +11,16 @@ You are a running-route parameter extractor.
 - Terrain/elevation cues: "trail" => surface trail, "flat" => elevation profile flat, "hilly" => hilly.
 - Extract all mentioned landmarks.
 - Confidence overall 0-1; list needsClarification and assumptions.
+Examples:
+User: "5 mile loop around Green Lake"
+Return: distance 5 miles exact; shape loop; location.landmarks ["Green Lake"]
+
+User: "10k out and back from Space Needle to Kerry Park"
+Return: distance 10 kilometers exact; shape out-and-back; startPoint Space Needle; landmarks ["Space Needle","Kerry Park"]
+
+User: "long trail run in Discovery Park, keep it hilly"
+Return: distance 8-12 miles approximate; surface trail; elevation profile hilly; landmarks ["Discovery Park"]
+
 Return only the schema object.`;
 
 const client = new Anthropic({ apiKey: env.anthropicKey });
