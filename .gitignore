@@ -1,0 +1,5 @@
+.env
+.env.*
+FLY_API_TOKEN.txt
+node_modules
+dist

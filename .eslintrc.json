@@ -1,0 +1,28 @@
+{
+  "env": { "es2021": true, "node": true },
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint", "import"],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:import/recommended",
+    "plugin:import/typescript",
+    "prettier"
+  ],
+  "settings": {
+    "import/resolver": {
+      "typescript": {},
+      "node": {
+        "extensions": [".ts", ".js", ".d.ts"]
+      }
+    }
+  },
+  "rules": {
+    "import/order": ["warn", { "newlines-between": "always" }],
+    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "import/no-unresolved": ["error", { "ignore": ["^@anthropic-ai/sdk$"] }],
+    "import/no-named-as-default": "off",
+    "import/no-named-as-default-member": "off"
+  },
+  "ignorePatterns": ["dist", "node_modules"]
+}

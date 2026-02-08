@@ -1,0 +1,22 @@
+graphhopper:
+  datareader.file: /data/washington-latest.osm.pbf
+  graph.location: /data/graph-cache
+  profiles:
+    - name: foot
+      custom_model_files: [foot.json]
+    - name: trail
+      custom_model_files: [trail_runner.json]
+  profiles_ch: []
+  profiles_lm:
+    - profile: foot
+    - profile: trail
+  graph.encoded_values: foot_access,foot_average_speed,foot_priority,road_class,road_environment,surface,average_slope
+  graph.elevation.provider: srtm
+  import.osm.ignored_highways: motorway,trunk
+  graph.dataaccess.default_type: MMAP
+  routing.non_ch.max_waypoint_distance: 1000000
+server:
+  application_connectors:
+    - type: http
+      port: 8989
+      bind_host: 0.0.0.0
