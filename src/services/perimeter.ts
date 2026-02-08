@@ -1,5 +1,5 @@
 import { fetchPerimeterAndTrails } from '../clients/overpassClient';
-import { bboxFromPoint, circularWaypoints } from '../utils/bbox';
+import { circularWaypoints } from '../utils/bbox';
 
 export function samplePerimeter(points: [number, number][], targetCount = 16): [number, number][] {
   if (points.length === 0) return [];

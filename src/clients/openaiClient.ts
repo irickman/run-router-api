@@ -3,13 +3,23 @@ import OpenAI from 'openai';
 import { env } from '../config/env';
 import { RouteParametersParsed, RouteParametersSchema } from '../utils/jsonSchema';
 
+const SYSTEM_PROMPT = `
+You are a running-route parameter extractor.
+- Output MUST follow the RouteParameters JSON schema.
+- Defaults: region Seattle, WA (47.6062, -122.3321) when unspecified; shape loop when unspecified.
+- Distance keywords: 5k=5 km, 10k=10 km, half marathon=13.1 miles, marathon=26.2 miles, long run=8-12 miles, short run=2-4 miles, easy run=3-5 miles.
+- Terrain/elevation cues: "trail" => surface trail, "flat" => elevation profile flat, "hilly" => hilly.
+- Extract landmarks mentioned (use array).
+- Confidence overall 0-1; list needsClarification and assumptions.
+Return only the JSON schema object.`;
+
 const client = new OpenAI({ apiKey: env.openaiKey });
 
 export async function extractParametersWithOpenAI(query: string): Promise<RouteParametersParsed> {
   const response = await client.chat.completions.create({
     model: 'gpt-4.1-mini',
     messages: [
-      { role: 'system', content: 'Parse running route requests into RouteParameters JSON schema.' },
+      { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: query },
     ],
     response_format: {

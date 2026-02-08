@@ -13,10 +13,13 @@ const router = Router();
 router.post('/route', async (req, res) => {
   try {
     const { query, location } = req.body;
-    if (!query || !location) return res.status(400).json({ error: 'Missing query or location' });
+    if (!query) return res.status(400).json({ error: 'Missing query' });
+
+    const fallbackLocation = { lat: 47.6062, lng: -122.3321 };
+    const loc = location || fallbackLocation;
 
     const params = await extractRouteParameters(query);
-    const start = [location.lng, location.lat] as [number, number];
+    const start = [loc.lng, loc.lat] as [number, number];
 
     // simple geocode bias
     await geocode(params.location.startPoint || '', start);
@@ -43,8 +46,8 @@ router.post('/route', async (req, res) => {
       stats: {
         distance_miles: metersToMiles(distanceMeters),
         distance_meters: distanceMeters,
-        elevation_gain_feet: 0,
-        duration_minutes: distanceMeters / (1609.344 * 6), // ~6 mph pace
+        elevation_gain_feet: routeResult.ascend * 3.28084,
+        duration_minutes: routeResult.time / 60000,
       },
       parameters: params,
       metadata: { shape: params.shape.type, landmarks: params.location.landmarks },

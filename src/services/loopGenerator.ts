@@ -9,6 +9,8 @@ interface Circuit {
   path1: [number, number, number?][];
   path2: [number, number, number?][];
   totalDistance: number;
+  totalTime: number;
+  totalAscend: number;
 }
 
 function generateBearings(count: number): number[] {
@@ -74,6 +76,8 @@ export async function generateLoop(
       path1: p1.points,
       path2: p2.points,
       totalDistance: p1.distance + p2.distance,
+      totalTime: p1.time + p2.time,
+      totalAscend: (p1.ascend ?? 0) + (p2.ascend ?? 0),
     };
     circuits.push(circuit);
   }
@@ -89,6 +93,10 @@ export async function generateLoop(
 
   if (Math.abs(best.totalDistance - targetDistanceMeters) / targetDistanceMeters > 0.05) {
     best = await fineTune(best, start, targetDistanceMeters, profile);
+  }
+
+  if (Math.abs(best.totalDistance - targetDistanceMeters) / targetDistanceMeters > 0.05) {
+    throw new Error('Unable to reach target distance within tolerance');
   }
 
   return best;
@@ -127,5 +135,7 @@ async function fineTune(
     path1: circuit.path1,
     path2: [...circuit.path2, ...detour.points],
     totalDistance: circuit.totalDistance + detour.distance,
+    totalTime: circuit.totalTime + detour.time,
+    totalAscend: circuit.totalAscend + (detour.ascend ?? 0),
   };
 }
