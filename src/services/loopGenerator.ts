@@ -79,12 +79,28 @@ export async function generateLoop(
   circuits.sort((a, b) => Math.abs(a.totalDistance - targetDistanceMeters) - Math.abs(b.totalDistance - targetDistanceMeters));
   let best = circuits[0];
 
-  // simple fine-tune: if < target, extend slightly with a small detour; placeholder
-  if (best && best.totalDistance < targetDistanceMeters * 0.95) {
-    // naive extension: add 5% by duplicating a segment
-    best = { ...best, totalDistance: best.totalDistance * 1.05 };
+  if (!best) throw new Error('No circuit found');
+
+  if (Math.abs(best.totalDistance - targetDistanceMeters) / targetDistanceMeters > 0.05) {
+    best = await fineTune(best, start, targetDistanceMeters, profile);
   }
 
-  if (!best) throw new Error('No circuit found');
   return best;
+}
+
+async function fineTune(
+  circuit: Circuit,
+  start: [number, number],
+  target: number,
+  profile: Profile
+): Promise<Circuit> {
+  const deficit = target - circuit.totalDistance;
+  if (Math.abs(deficit) < target * 0.02) return circuit;
+  const stubLength = Math.abs(deficit);
+  const detour = await route([start, project(start, 45, stubLength / 2), start], profile);
+  return {
+    path1: circuit.path1,
+    path2: [...circuit.path2, ...detour.points],
+    totalDistance: circuit.totalDistance + detour.distance,
+  };
 }

@@ -1,5 +1,6 @@
-import axios from 'axios';
 import LRU from 'lru-cache';
+
+import { axios } from '../utils/http';
 
 const cache = new LRU<string, OverpassPolygonResult | null>({ max: 200, ttl: 1000 * 60 * 60 * 24 });
 

@@ -1,6 +1,5 @@
-import axios from 'axios';
-
 import { env } from '../config/env';
+import { axios } from '../utils/http';
 
 export type Profile = 'foot' | 'trail';
 

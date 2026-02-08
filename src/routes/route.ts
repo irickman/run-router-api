@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 
 import { geocode } from '../clients/mapboxClient';
-import { generateLoop } from '../services/loopGenerator';
 import { extractRouteParameters } from '../services/nlp';
+import { buildRoute } from '../services/routeBuilder';
 import { getRoute, saveRoute } from '../services/storage';
 import { metersToMiles } from '../utils/geometry';
 import { toGPX } from '../utils/gpx';
@@ -30,21 +30,21 @@ router.post('/route', async (req, res) => {
 
     const profile = params.terrain.surfaces.some((s) => s.type === 'trail') ? 'trail' : 'foot';
 
-    const circuit = await generateLoop(start, targetMeters, profile);
+    const routeResult = await buildRoute({ params, start, targetMeters, profile });
 
-    const distanceMeters = circuit.totalDistance;
+    const distanceMeters = routeResult.distance;
     const routeId = uuidv4();
     const sessionId = uuidv4();
 
     const routeData = {
       sessionId,
       routeId,
-      geometry: { type: 'LineString', coordinates: [...circuit.path1, ...circuit.path2] },
+      geometry: { type: 'LineString', coordinates: routeResult.coordinates },
       stats: {
         distance_miles: metersToMiles(distanceMeters),
         distance_meters: distanceMeters,
         elevation_gain_feet: 0,
-        duration_minutes: (distanceMeters / (9 * 60)) / 60, // placeholder pace 9 min/mi
+        duration_minutes: distanceMeters / (1609.344 * 6), // ~6 mph pace
       },
       parameters: params,
       metadata: { shape: params.shape.type, landmarks: params.location.landmarks },
