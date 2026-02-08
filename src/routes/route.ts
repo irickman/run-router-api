@@ -66,6 +66,10 @@ router.post('/route', async (req, res) => {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal error';
+    if (process.env.NODE_ENV === 'test') {
+      // eslint-disable-next-line no-console
+      console.error('route error', err);
+    }
     res.status(500).json({ error: message });
   }
 });

@@ -50,7 +50,9 @@ async function findFarPointCandidates(
   for (const b of bearings) {
     const projected = project(start, b, ideal);
     const res = await route([start, projected], profile);
-    candidates.push({ coords: [res.points.at(-1)![0], res.points.at(-1)![1]], shortestDistance: res.distance });
+    const endPoint = res.points.at(-1);
+    if (!endPoint) continue;
+    candidates.push({ coords: [endPoint[0], endPoint[1]], shortestDistance: res.distance });
   }
   return candidates.filter(
     (c) => c.shortestDistance >= targetDistance / 4 && c.shortestDistance <= targetDistance / 2
@@ -76,7 +78,11 @@ export async function generateLoop(
     circuits.push(circuit);
   }
 
-  circuits.sort((a, b) => Math.abs(a.totalDistance - targetDistanceMeters) - Math.abs(b.totalDistance - targetDistanceMeters));
+  circuits.sort((a, b) => {
+    const distDiff = Math.abs(a.totalDistance - targetDistanceMeters) - Math.abs(b.totalDistance - targetDistanceMeters);
+    if (distDiff !== 0) return distDiff;
+    return attractiveness(b) - attractiveness(a);
+  });
   let best = circuits[0];
 
   if (!best) throw new Error('No circuit found');
@@ -86,6 +92,25 @@ export async function generateLoop(
   }
 
   return best;
+}
+
+function attractiveness(c: Circuit): number {
+  const coords = [...c.path1, ...c.path2];
+  if (coords.length < 3) return 0;
+  let totalAngle = 0;
+  for (let i = 1; i < coords.length - 1; i++) {
+    const [ax, ay] = coords[i - 1];
+    const [bx, by] = coords[i];
+    const [cx, cy] = coords[i + 1];
+    const v1 = [ax - bx, ay - by];
+    const v2 = [cx - bx, cy - by];
+    const dot = v1[0] * v2[0] + v1[1] * v2[1];
+    const det = v1[0] * v2[1] - v1[1] * v2[0];
+    const angle = Math.abs(Math.atan2(det, dot));
+    totalAngle += angle;
+  }
+  const ideal = Math.PI * 2;
+  return Math.max(0, 1 - Math.abs(totalAngle - ideal) / ideal);
 }
 
 async function fineTune(

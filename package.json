@@ -13,6 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.74.0",
     "anthropic": "@anthropic-ai/sdk@^0.74.0",
     "axios": "^1.6.8",
     "axios-retry": "^4.5.0",

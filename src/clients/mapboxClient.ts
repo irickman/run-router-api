@@ -1,9 +1,9 @@
-import LRU from 'lru-cache';
+import { LRUCache } from 'lru-cache';
 
 import { env } from '../config/env';
 import { axios } from '../utils/http';
 
-const cache = new LRU<string, GeocodeResult[]>({ max: 500, ttl: 1000 * 60 * 60 * 24 });
+const cache = new LRUCache<string, GeocodeResult[]>({ max: 500, ttl: 1000 * 60 * 60 * 24 });
 
 export interface GeocodeResult {
   name: string;

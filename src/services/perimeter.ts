@@ -1,4 +1,5 @@
 import { fetchPerimeterAndTrails } from '../clients/overpassClient';
+import { bboxFromPoint, circularWaypoints } from '../utils/bbox';
 
 export function samplePerimeter(points: [number, number][], targetCount = 16): [number, number][] {
   if (points.length === 0) return [];
@@ -19,4 +20,9 @@ export async function perimeterWaypoints(
   if (!res) return [];
   const perimeter = samplePerimeter(res.polygon, 24);
   return perimeter;
+}
+
+export function fallbackPerimeter(start: [number, number], targetMeters: number): [number, number][] {
+  const radius = targetMeters / (2 * Math.PI); // circle circumference ~ target
+  return circularWaypoints(start, radius, 16);
 }

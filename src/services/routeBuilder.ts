@@ -2,7 +2,8 @@ import { geocode } from '../clients/mapboxClient';
 import { Profile, route } from '../clients/graphhopperClient';
 import { RouteParametersParsed } from '../utils/jsonSchema';
 import { generateLoop } from './loopGenerator';
-import { perimeterWaypoints } from './perimeter';
+import { fallbackPerimeter, perimeterWaypoints } from './perimeter';
+import { bboxFromPoint } from '../utils/bbox';
 
 interface BuildContext {
   params: RouteParametersParsed;
@@ -32,9 +33,11 @@ async function loopRoute(ctx: BuildContext) {
 async function landmarkRoute(ctx: BuildContext) {
   const landmark = ctx.params.location.landmarks[0];
   const [geo] = await geocode(landmark, ctx.start);
-  const waypoint = geo ? geo.coordinates : ctx.start;
+  const bbox = geo?.bbox || bboxFromPoint(ctx.start);
+  const perimeter = await perimeterWaypoints(landmark, bbox);
+  const waypoints = perimeter.length ? perimeter : fallbackPerimeter(ctx.start, ctx.targetMeters);
 
-  const legs: [number, number][] = [ctx.start, waypoint, ctx.start];
+  const legs: [number, number][] = [ctx.start, ...waypoints, ctx.start];
   const pathCoords: [number, number, number?][] = [];
   let total = 0;
   for (let i = 0; i < legs.length - 1; i++) {
@@ -42,18 +45,5 @@ async function landmarkRoute(ctx: BuildContext) {
     pathCoords.push(...leg.points);
     total += leg.distance;
   }
-
-  if (total < ctx.targetMeters * 0.95) {
-    const extend = await route([ctx.start, projectOut(ctx.start, 0.1 * ctx.targetMeters), ctx.start], ctx.profile);
-    pathCoords.push(...extend.points);
-    total += extend.distance;
-  }
-
   return { coordinates: pathCoords, distance: total };
-}
-
-function projectOut(start: [number, number], distance: number): [number, number] {
-  // simple northward offset by meters
-  const dLat = (distance / 6371e3) * (180 / Math.PI);
-  return [start[0], start[1] + dLat];
 }

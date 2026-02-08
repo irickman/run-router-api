@@ -1,0 +1,9 @@
+FROM israelhikingmap/graphhopper:latest
+
+COPY config.yml /graphhopper/config.yml
+COPY custom-models/ /graphhopper/custom-models/
+COPY start.sh /graphhopper/start.sh
+RUN chmod +x /graphhopper/start.sh
+
+EXPOSE 8989
+CMD ["/graphhopper/start.sh"]
