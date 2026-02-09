@@ -1,0 +1,1 @@
+All V1 review issues are resolved. Link-penalty and overlap checks are enforced, landmark routing avoids prior edges, loop routes stay within 5% distance and <5% shared edges, and the LLM prompt includes required defaults and examples.

@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 
 import { env } from '../config/env';
 import { RouteParametersParsed, RouteParametersSchema } from '../utils/jsonSchema';
+import { RouteParametersJsonSchema } from '../utils/routeParametersSchemaJson';
 
 const SYSTEM_PROMPT = `
 You are a running-route parameter extractor.
@@ -24,6 +25,7 @@ Return: distance 8-12 miles approximate; surface trail; elevation profile hilly;
 Return only the JSON schema object.`;
 
 const client = new OpenAI({ apiKey: env.openaiKey });
+const schemaJson = RouteParametersJsonSchema;
 
 export async function extractParametersWithOpenAI(query: string): Promise<RouteParametersParsed> {
   const response = await client.chat.completions.create({
@@ -37,7 +39,7 @@ export async function extractParametersWithOpenAI(query: string): Promise<RouteP
       json_schema: {
         name: 'RouteParameters',
         strict: true,
-        schema: RouteParametersSchema.toJSON(),
+        schema: schemaJson,
       },
     },
   });

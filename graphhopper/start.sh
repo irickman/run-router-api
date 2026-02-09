@@ -11,4 +11,5 @@ fi
 java $JAVA_OPTS \
   -Ddw.graphhopper.datareader.file="$PBF_FILE" \
   -Ddw.graphhopper.graph.location="$GRAPH_DIR" \
-  -jar /graphhopper/*.jar server /graphhopper/config.yml
+  -Ddw.server.application_connectors[0].port=8989 \
+  -jar /graphhopper/graphhopper-web-11.0-SNAPSHOT.jar server /graphhopper/config.yml

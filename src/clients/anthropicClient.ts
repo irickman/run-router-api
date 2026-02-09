@@ -2,6 +2,7 @@ import Anthropic, { MessageCreateParams } from '@anthropic-ai/sdk';
 
 import { env } from '../config/env';
 import { RouteParametersParsed, RouteParametersSchema } from '../utils/jsonSchema';
+import { RouteParametersJsonSchema } from '../utils/routeParametersSchemaJson';
 
 const SYSTEM_PROMPT = `
 You are a running-route parameter extractor.
@@ -24,6 +25,7 @@ Return: distance 8-12 miles approximate; surface trail; elevation profile hilly;
 Return only the schema object.`;
 
 const client = new Anthropic({ apiKey: env.anthropicKey });
+const schemaJson = RouteParametersJsonSchema;
 
 export async function extractParametersWithAnthropic(query: string): Promise<RouteParametersParsed> {
   const response = await client.messages.create({
@@ -33,7 +35,7 @@ export async function extractParametersWithAnthropic(query: string): Promise<Rou
       {
         name: 'extract_route_parameters',
         description: 'Extract structured route parameters from user query',
-        input_schema: RouteParametersSchema.toJSON(),
+        input_schema: schemaJson,
       },
     ],
     tool_choice: { type: 'tool', name: 'extract_route_parameters' },

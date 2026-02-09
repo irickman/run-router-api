@@ -3,3 +3,5 @@
 FLY_API_TOKEN.txt
 node_modules
 dist
+gh-data
+tmp-schema.ts

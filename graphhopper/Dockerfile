@@ -6,4 +6,4 @@ COPY start.sh /graphhopper/start.sh
 RUN chmod +x /graphhopper/start.sh
 
 EXPOSE 8989
-CMD ["/graphhopper/start.sh"]
+ENTRYPOINT ["/graphhopper/start.sh"]

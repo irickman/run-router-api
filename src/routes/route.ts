@@ -21,8 +21,9 @@ router.post('/route', async (req, res) => {
     const params = await extractRouteParameters(query);
     const start = [loc.lng, loc.lat] as [number, number];
 
-    // simple geocode bias
-    await geocode(params.location.startPoint || '', start);
+    if (params.location.startPoint) {
+      await geocode(params.location.startPoint, start);
+    }
 
     const targetMeters =
       params.distance.unit === 'miles'
@@ -69,10 +70,8 @@ router.post('/route', async (req, res) => {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal error';
-    if (process.env.NODE_ENV === 'test') {
-      // eslint-disable-next-line no-console
-      console.error('route error', err);
-    }
+    // eslint-disable-next-line no-console
+    console.error('route error', err);
     res.status(500).json({ error: message });
   }
 });

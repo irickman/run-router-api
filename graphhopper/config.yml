@@ -1,11 +1,12 @@
 graphhopper:
   datareader.file: /data/washington-latest.osm.pbf
   graph.location: /data/graph-cache
+  custom_models.directory: /graphhopper/custom-models
   profiles:
     - name: foot
-      custom_model_files: [foot.json]
+      custom_model_files: [foot_cm.json]
     - name: trail
-      custom_model_files: [trail_runner.json]
+      custom_model_files: [trail_runner_cm.json]
   profiles_ch: []
   profiles_lm:
     - profile: foot
