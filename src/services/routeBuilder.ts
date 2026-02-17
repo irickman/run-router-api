@@ -22,18 +22,46 @@ export interface BuiltRoute {
 }
 
 export async function buildRoute(ctx: BuildContext): Promise<BuiltRoute> {
-  const hasLandmark = ctx.params.location.landmarks.length > 0;
   const shape = ctx.params.shape.type;
+  const hasLandmark = ctx.params.location.landmarks.length > 0;
+  const baseRoutingModel = buildElevationModel(ctx.params.terrain.elevation);
 
-  if (hasLandmark) return await landmarkRoute(ctx, shape);
-  if (shape === 'point-to-point') return await pointToPoint(ctx);
-  if (shape === 'out-and-back') return await outAndBack(ctx);
+  let best = await buildRouteForShape(
+    ctx,
+    shape,
+    // Point-to-point requests should route directly to endPoint first, even if landmarks were extracted.
+    shape === 'point-to-point' ? false : hasLandmark,
+    baseRoutingModel
+  );
+  const maxGain = ctx.params.terrain.elevation.maxGain;
+  if (maxGain !== null && best.ascend > maxGain + 30.48) {
+    const constrainedModel = buildElevationModel({
+      ...ctx.params.terrain.elevation,
+      profile: 'flat',
+      preference: 'minimize',
+    });
+    const constrained = await buildRouteForShape(ctx, shape, hasLandmark, constrainedModel);
+    if (constrained.ascend < best.ascend) best = constrained;
+  }
 
-  return await loopRoute(ctx);
+  return best;
 }
 
-async function loopRoute(ctx: BuildContext): Promise<BuiltRoute> {
-  const circuit = await generateLoop(ctx.start, ctx.targetMeters, ctx.profile);
+async function buildRouteForShape(
+  ctx: BuildContext,
+  shape: string,
+  hasLandmark: boolean,
+  routingModel?: unknown
+): Promise<BuiltRoute> {
+  if (hasLandmark) return await landmarkRoute(ctx, shape, routingModel);
+  if (shape === 'point-to-point') return await pointToPoint(ctx, routingModel);
+  if (shape === 'out-and-back') return await outAndBack(ctx, routingModel);
+
+  return await loopRoute(ctx, routingModel);
+}
+
+async function loopRoute(ctx: BuildContext, routingModel?: unknown): Promise<BuiltRoute> {
+  const circuit = await generateLoop(ctx.start, ctx.targetMeters, ctx.profile, routingModel);
   return {
     coordinates: [...circuit.path1, ...circuit.path2],
     distance: circuit.totalDistance,
@@ -42,11 +70,19 @@ async function loopRoute(ctx: BuildContext): Promise<BuiltRoute> {
   };
 }
 
-async function landmarkRoute(ctx: BuildContext, shape: string): Promise<BuiltRoute> {
+async function landmarkRoute(
+  ctx: BuildContext,
+  shape: string,
+  routingModel?: unknown
+): Promise<BuiltRoute> {
   const geocoded: [number, number][] = [];
   for (const name of ctx.params.location.landmarks) {
-    const [geo] = await geocode(name, ctx.start);
-    if (geo) geocoded.push(geo.coordinates);
+    try {
+      const [geo] = await geocode(name, ctx.start);
+      if (geo) geocoded.push(geo.coordinates);
+    } catch {
+      // Landmark geocoding failures are non-blocking; perimeter fallback handles route continuity.
+    }
   }
 
   let waypointSet: [number, number][] = geocoded;
@@ -58,8 +94,52 @@ async function landmarkRoute(ctx: BuildContext, shape: string): Promise<BuiltRou
     if (perimeter.length) waypointSet.push(...perimeter);
   }
 
-  const legs: [number, number][] = [ctx.start, ...waypointSet];
-  if (shape === 'loop' || shape === 'flexible' || shape === 'out-and-back') legs.push(ctx.start);
+  let best = await buildLandmarkLegs(ctx.start, waypointSet, shape, ctx.profile, routingModel);
+
+  let optimizedWaypoints = [...waypointSet];
+  const isCircuit = shape === 'loop' || shape === 'flexible' || shape === 'out-and-back';
+  if (isCircuit) {
+    for (let iteration = 0; iteration < 3; iteration++) {
+      const ratio = Math.abs(best.distance - ctx.targetMeters) / ctx.targetMeters;
+      if (ratio <= 0.05) break;
+      if (best.distance > ctx.targetMeters) break;
+
+      const deficit = ctx.targetMeters - best.distance;
+      optimizedWaypoints = insertIntermediateWaypoint(
+        ctx.start,
+        optimizedWaypoints,
+        deficit,
+        shape,
+        0.6
+      );
+
+      const candidate = await buildLandmarkLegs(
+        ctx.start,
+        optimizedWaypoints,
+        shape,
+        ctx.profile,
+        routingModel
+      );
+      if (Math.abs(candidate.distance - ctx.targetMeters) < Math.abs(best.distance - ctx.targetMeters)) {
+        best = candidate;
+      } else {
+        break;
+      }
+    }
+  }
+
+  return best;
+}
+
+async function buildLandmarkLegs(
+  start: [number, number],
+  waypointSet: [number, number][],
+  shape: string,
+  profile: Profile,
+  routingModel?: unknown
+): Promise<BuiltRoute> {
+  const legs: [number, number][] = [start, ...waypointSet];
+  if (shape === 'loop' || shape === 'flexible' || shape === 'out-and-back') legs.push(start);
 
   const pathCoords: [number, number, number?][] = [];
   let distance = 0;
@@ -67,36 +147,102 @@ async function landmarkRoute(ctx: BuildContext, shape: string): Promise<BuiltRou
   let ascend = 0;
   let usedEdges: EdgeSet = new Set<string>();
   for (let i = 0; i < legs.length - 1; i++) {
-    const leg = await route([legs[i], legs[i + 1]], ctx.profile, { alternative: true });
+    const leg = await route([legs[i], legs[i + 1]], profile, {
+      alternative: true,
+      customModel: routingModel,
+    });
     const edges = edgeKeys(leg.points);
     const overlap = sharedEdgeRatioSets(usedEdges, edges);
+    let chosen = leg;
+    let chosenEdges = edges;
+
     if (overlap > 0.05) {
-      const alt = await penalizedRoute([legs[i], legs[i + 1]], ctx.profile, usedEdges);
+      const alt = await penalizedRoute([legs[i], legs[i + 1]], profile, usedEdges, routingModel);
       const altEdges = edgeKeys(alt.points);
       const altOverlap = sharedEdgeRatioSets(usedEdges, altEdges);
-      if (altOverlap < overlap) {
-        usedEdges = new Set([...usedEdges, ...altEdges]);
-        pathCoords.push(...alt.points);
-        distance += alt.distance;
-        time += alt.time;
-        ascend += alt.ascend ?? 0;
-        continue;
+      if (altOverlap <= overlap) {
+        chosen = alt;
+        chosenEdges = altEdges;
       }
     }
-    usedEdges = new Set([...usedEdges, ...edges]);
-    pathCoords.push(...leg.points);
-    distance += leg.distance;
-    time += leg.time;
-    ascend += leg.ascend ?? 0;
+
+    usedEdges = new Set([...usedEdges, ...chosenEdges]);
+    pathCoords.push(...chosen.points);
+    distance += chosen.distance;
+    time += chosen.time;
+    ascend += chosen.ascend ?? 0;
   }
   return { coordinates: pathCoords, distance, time, ascend };
 }
 
-async function outAndBack(ctx: BuildContext): Promise<BuiltRoute> {
+function insertIntermediateWaypoint(
+  start: [number, number],
+  waypoints: [number, number][],
+  deficitMeters: number,
+  shape: string,
+  damping: number
+): [number, number][] {
+  const circuitLegs: [number, number][] = [start, ...waypoints];
+  if (shape === 'loop' || shape === 'flexible' || shape === 'out-and-back') circuitLegs.push(start);
+  if (circuitLegs.length < 2) return waypoints;
+
+  let longestLegIdx = 0;
+  let longestLegDist = -1;
+  for (let i = 0; i < circuitLegs.length - 1; i++) {
+    const dist = euclideanMeters(circuitLegs[i], circuitLegs[i + 1]);
+    if (dist > longestLegDist) {
+      longestLegDist = dist;
+      longestLegIdx = i;
+    }
+  }
+
+  const from = circuitLegs[longestLegIdx];
+  const to = circuitLegs[longestLegIdx + 1];
+  const detour = detourWaypoint(from, to, Math.max(100, deficitMeters * damping * 0.5));
+
+  const insertionIndex = Math.max(0, Math.min(waypoints.length, longestLegIdx));
+  return [...waypoints.slice(0, insertionIndex), detour, ...waypoints.slice(insertionIndex)];
+}
+
+function detourWaypoint(
+  from: [number, number],
+  to: [number, number],
+  offsetMeters: number
+): [number, number] {
+  const midLng = (from[0] + to[0]) / 2;
+  const midLat = (from[1] + to[1]) / 2;
+  const dx = to[0] - from[0];
+  const dy = to[1] - from[1];
+  const length = Math.hypot(dx, dy) || 1;
+  const perpX = -dy / length;
+  const perpY = dx / length;
+
+  const latMeters = 111320;
+  const lngMeters = Math.max(1, latMeters * Math.cos((midLat * Math.PI) / 180));
+  const offsetLng = (offsetMeters * perpX) / lngMeters;
+  const offsetLat = (offsetMeters * perpY) / latMeters;
+  return [midLng + offsetLng, midLat + offsetLat];
+}
+
+function euclideanMeters(a: [number, number], b: [number, number]): number {
+  const avgLat = ((a[1] + b[1]) / 2) * (Math.PI / 180);
+  const lngScale = 111320 * Math.cos(avgLat);
+  const dx = (b[0] - a[0]) * lngScale;
+  const dy = (b[1] - a[1]) * 111320;
+  return Math.hypot(dx, dy);
+}
+
+async function outAndBack(ctx: BuildContext, routingModel?: unknown): Promise<BuiltRoute> {
   const targetOut = ctx.targetMeters / 2;
   const far = projectOut(ctx.start, targetOut);
-  const outLeg = await route([ctx.start, far], ctx.profile, { alternative: true });
-  const backLeg = await route([far, ctx.start], ctx.profile, { alternative: true });
+  const outLeg = await route([ctx.start, far], ctx.profile, {
+    alternative: true,
+    customModel: routingModel,
+  });
+  const backLeg = await route([far, ctx.start], ctx.profile, {
+    alternative: true,
+    customModel: routingModel,
+  });
   return {
     coordinates: [...outLeg.points, ...backLeg.points],
     distance: outLeg.distance + backLeg.distance,
@@ -105,22 +251,64 @@ async function outAndBack(ctx: BuildContext): Promise<BuiltRoute> {
   };
 }
 
-async function pointToPoint(ctx: BuildContext): Promise<BuiltRoute> {
+async function pointToPoint(ctx: BuildContext, routingModel?: unknown): Promise<BuiltRoute> {
   const end = await resolveEnd(ctx);
-  const leg = await route([ctx.start, end], ctx.profile);
+  if (!end) {
+    // Preserve a usable route when destination geocoding fails.
+    return await outAndBack(ctx, routingModel);
+  }
+  const leg = await route([ctx.start, end], ctx.profile, { customModel: routingModel });
   return { coordinates: leg.points, distance: leg.distance, time: leg.time, ascend: leg.ascend ?? 0 };
 }
 
-async function resolveEnd(ctx: BuildContext): Promise<[number, number]> {
+async function resolveEnd(ctx: BuildContext): Promise<[number, number] | null> {
   const name = ctx.params.location.endPoint || ctx.params.location.landmarks[0];
   if (name) {
-    const [geo] = await geocode(name, ctx.start);
-    if (geo) return geo.coordinates;
+    try {
+      const [geo] = await geocode(name, ctx.start);
+      if (geo) return geo.coordinates;
+    } catch {
+      // Start location fallback is intentional for point-to-point geocoding misses.
+    }
   }
-  return ctx.start;
+  return null;
 }
 
 function projectOut(start: [number, number], distanceMeters: number): [number, number] {
   const dLat = (distanceMeters / 6371e3) * (180 / Math.PI);
   return [start[0], start[1] + dLat];
+}
+
+function buildElevationModel(elevation: BuildContext['params']['terrain']['elevation']): unknown {
+  const wantMinimize =
+    elevation.preference === 'minimize' || elevation.profile === 'flat' || elevation.maxGain !== null;
+  const wantMaximize =
+    elevation.preference === 'maximize' ||
+    elevation.profile === 'hilly' ||
+    elevation.profile === 'mountainous';
+
+  if (!wantMinimize && !wantMaximize && elevation.profile !== 'rolling') return undefined;
+
+  if (wantMinimize) {
+    return {
+      speed: [
+        { if: 'average_slope >= 10', limit_to: '1.8' },
+        { else_if: 'average_slope >= 6', limit_to: '2.3' },
+        { else_if: 'average_slope >= 3', limit_to: '2.8' },
+      ],
+    };
+  }
+
+  if (wantMaximize) {
+    return {
+      priority: [
+        { if: 'average_slope >= 4', multiply_by: '1.15' },
+        { if: 'average_slope >= 8', multiply_by: '1.3' },
+      ],
+    };
+  }
+
+  return {
+    priority: [{ if: 'average_slope >= 3', multiply_by: '1.08' }],
+  };
 }

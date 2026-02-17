@@ -45,14 +45,15 @@ function project(start: [number, number], bearingDeg: number, distanceMeters: nu
 async function findFarPointCandidates(
   start: [number, number],
   targetDistance: number,
-  profile: Profile
+  profile: Profile,
+  customModel?: unknown
 ): Promise<Candidate[]> {
   const ideal = targetDistance / 3;
   const bearings = generateBearings(12);
   const candidates: Candidate[] = [];
   for (const b of bearings) {
     const projected = project(start, b, ideal);
-    const res = await route([start, projected], profile);
+    const res = await route([start, projected], profile, { customModel });
     const endPoint = res.points.at(-1);
     if (!endPoint) continue;
     candidates.push({ coords: [endPoint[0], endPoint[1]], shortestDistance: res.distance });
@@ -65,14 +66,15 @@ async function findFarPointCandidates(
 export async function generateLoop(
   start: [number, number],
   targetDistanceMeters: number,
-  profile: Profile
+  profile: Profile,
+  customModel?: unknown
 ): Promise<Circuit> {
-  const candidates = await findFarPointCandidates(start, targetDistanceMeters, profile);
+  const candidates = await findFarPointCandidates(start, targetDistanceMeters, profile, customModel);
   const circuits: Circuit[] = [];
 
   for (const candidate of candidates.slice(0, 10)) {
-    const p1 = await route([start, candidate.coords], profile);
-    const p2 = await route([start, candidate.coords], profile, { alternative: true });
+    const p1 = await route([start, candidate.coords], profile, { customModel });
+    const p2 = await route([start, candidate.coords], profile, { alternative: true, customModel });
     const overlap = sharedEdgeRatio(p1.points, p2.points);
     const circuit: Circuit = {
       path1: p1.points,
@@ -97,7 +99,7 @@ export async function generateLoop(
   if (!best) throw new Error('No circuit found');
 
   if (Math.abs(best.totalDistance - targetDistanceMeters) / targetDistanceMeters > 0.05) {
-    best = await fineTune(best, start, targetDistanceMeters, profile);
+    best = await fineTune(best, start, targetDistanceMeters, profile, customModel);
   }
 
   if (
@@ -157,17 +159,21 @@ async function fineTune(
   circuit: Circuit,
   start: [number, number],
   target: number,
-  profile: Profile
+  profile: Profile,
+  customModel?: unknown
 ): Promise<Circuit> {
   const deficit = target - circuit.totalDistance;
   if (Math.abs(deficit) < target * 0.02) return circuit;
   const stubLength = Math.abs(deficit);
-  const detour = await route([start, project(start, 45, stubLength / 2), start], profile);
+  const detour = await route([start, project(start, 45, stubLength / 2), start], profile, {
+    customModel,
+  });
   return {
     path1: circuit.path1,
     path2: [...circuit.path2, ...detour.points],
     totalDistance: circuit.totalDistance + detour.distance,
     totalTime: circuit.totalTime + detour.time,
     totalAscend: circuit.totalAscend + (detour.ascend ?? 0),
+    overlapRatio: sharedEdgeRatio(circuit.path1, [...circuit.path2, ...detour.points]),
   };
 }

@@ -1,7 +1,8 @@
-import Anthropic, { MessageCreateParams } from '@anthropic-ai/sdk';
+import Anthropic from '@anthropic-ai/sdk';
 
 import { env } from '../config/env';
 import { RouteParametersParsed, RouteParametersSchema } from '../utils/jsonSchema';
+import { logExternalError } from '../utils/logger';
 import { RouteParametersJsonSchema } from '../utils/routeParametersSchemaJson';
 
 const SYSTEM_PROMPT = `
@@ -28,25 +29,30 @@ const client = new Anthropic({ apiKey: env.anthropicKey });
 const schemaJson = RouteParametersJsonSchema;
 
 export async function extractParametersWithAnthropic(query: string): Promise<RouteParametersParsed> {
-  const response = await client.messages.create({
-    model: 'claude-3-haiku-20240307',
-    max_tokens: 1024,
-    tools: [
+  try {
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      tools: [
       {
         name: 'extract_route_parameters',
         description: 'Extract structured route parameters from user query',
-        input_schema: schemaJson,
+        input_schema: schemaJson as any,
       },
-    ],
-    tool_choice: { type: 'tool', name: 'extract_route_parameters' },
-    messages: [{ role: 'user', content: query }],
-    system: SYSTEM_PROMPT,
-  });
+      ],
+      tool_choice: { type: 'tool', name: 'extract_route_parameters' },
+      messages: [{ role: 'user', content: query }],
+      system: SYSTEM_PROMPT,
+    });
 
-  const toolUse = response.content.find(
-    (c): c is MessageCreateParams.ToolUseBlock => c.type === 'tool_use'
-  );
-  const parsed = toolUse?.input ?? null;
-  if (!parsed) throw new Error('Anthropic returned no tool output');
-  return RouteParametersSchema.parse(parsed);
+    const toolUse = response.content.find((c: any) => c.type === 'tool_use') as
+      | { input?: unknown }
+      | undefined;
+    const parsed = toolUse?.input ?? null;
+    if (!parsed) throw new Error('Anthropic returned no tool output');
+    return RouteParametersSchema.parse(parsed);
+  } catch (err) {
+    logExternalError('anthropic', err, { stage: 'parameter-extraction' });
+    throw err;
+  }
 }

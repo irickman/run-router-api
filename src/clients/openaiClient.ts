@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 
 import { env } from '../config/env';
 import { RouteParametersParsed, RouteParametersSchema } from '../utils/jsonSchema';
+import { logExternalError } from '../utils/logger';
 import { RouteParametersJsonSchema } from '../utils/routeParametersSchemaJson';
 
 const SYSTEM_PROMPT = `
@@ -28,24 +29,29 @@ const client = new OpenAI({ apiKey: env.openaiKey });
 const schemaJson = RouteParametersJsonSchema;
 
 export async function extractParametersWithOpenAI(query: string): Promise<RouteParametersParsed> {
-  const response = await client.chat.completions.create({
-    model: 'gpt-4.1-mini',
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: query },
-    ],
-    response_format: {
-      type: 'json_schema',
-      json_schema: {
-        name: 'RouteParameters',
-        strict: true,
-        schema: schemaJson,
+  try {
+    const response = await client.chat.completions.create({
+      model: 'gpt-4.1-mini',
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: query },
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'RouteParameters',
+          strict: true,
+          schema: schemaJson,
+        },
       },
-    },
-  });
+    });
 
-  const raw = response.choices[0]?.message?.content;
-  if (!raw) throw new Error('OpenAI returned empty content');
-  const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-  return RouteParametersSchema.parse(parsed);
+    const raw = response.choices[0]?.message?.content;
+    if (!raw) throw new Error('OpenAI returned empty content');
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return RouteParametersSchema.parse(parsed);
+  } catch (err) {
+    logExternalError('openai', err, { stage: 'parameter-extraction' });
+    throw err;
+  }
 }

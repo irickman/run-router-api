@@ -89,7 +89,14 @@ export const RouteParametersJsonSchema = {
         waterFountains: { type: 'boolean' },
         restrooms: { type: 'boolean' },
       },
-      required: ['difficulty', 'scenery', 'waterFountains', 'restrooms'],
+      required: [
+        'difficulty',
+        'scenery',
+        'safetyPriority',
+        'crowdedness',
+        'waterFountains',
+        'restrooms',
+      ],
       additionalProperties: false,
     },
     confidence: {

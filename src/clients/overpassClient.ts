@@ -1,8 +1,9 @@
 import { LRUCache } from 'lru-cache';
 
 import { axios } from '../utils/http';
+import { logExternalError, logWarn } from '../utils/logger';
 
-const cache = new LRUCache<string, OverpassPolygonResult | null>({ max: 200, ttl: 1000 * 60 * 60 * 24 });
+const cache = new LRUCache<string, OverpassPolygonResult>({ max: 200, ttl: 1000 * 60 * 60 * 24 });
 
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
@@ -42,12 +43,13 @@ export async function fetchPerimeterAndTrails(
         timeout: 30000,
       });
       const parsed = parseOverpass(res.data as { elements?: OverpassElement[] }, name);
-      cache.set(key, parsed);
+      if (parsed) cache.set(key, parsed);
       return parsed;
-    } catch {
-      // try next endpoint
+    } catch (err) {
+      logExternalError('overpass', err, { endpoint, name, bbox });
     }
   }
+  logWarn('overpass exhausted all endpoints', { name, bbox });
   return null;
 }
 

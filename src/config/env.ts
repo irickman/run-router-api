@@ -30,4 +30,7 @@ export const env = {
   graphhopperUrl: process.env.GRAPHHOPPER_URL!,
   port: Number(process.env.PORT || 3000),
   nodeEnv: process.env.NODE_ENV || 'development',
+  corsOrigin: process.env.CORS_ORIGIN || '*',
+  rateLimitPerHour: Number(process.env.RATE_LIMIT_MAX_PER_HOUR || '120'),
+  parameterExtractionTimeoutMs: Number(process.env.PARAM_EXTRACTION_TIMEOUT_MS || '30000'),
 };

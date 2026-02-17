@@ -25,12 +25,64 @@ export function sharedEdgeRatioSets(a: EdgeSet, b: EdgeSet): number {
 export async function penalizedRoute(
   points: [number, number][],
   profile: Profile,
-  _avoidedEdges: EdgeSet
+  avoidedEdges: EdgeSet,
+  customModel?: unknown
 ) {
-  // Approximate link-penalty by leveraging alternative_route and re-checking overlap downstream.
-  // GraphHopper custom area penalty would require geometry; here we rely on overlap check after the call.
-  const res = await route(points, profile, {
+  // Primary link-penalty path: GraphHopper alternatives.
+  const alt = await route(points, profile, {
     alternative: true,
+    customModel,
   });
-  return res;
+  const altOverlap = sharedEdgeRatioSets(avoidedEdges, edgeKeys(alt.points));
+  if (altOverlap <= 0.05 || points.length !== 2) return alt;
+
+  // Fallback link-penalty path: insert a detour waypoint to pull the leg off previously used edges.
+  const [start, end] = points;
+  const detours = buildAvoidanceWaypoints(start, end, alt.distance * 0.25);
+
+  let best = alt;
+  let bestOverlap = altOverlap;
+  for (const detour of detours) {
+    try {
+      const candidate = await route([start, detour, end], profile, { customModel });
+      const overlap = sharedEdgeRatioSets(avoidedEdges, edgeKeys(candidate.points));
+      if (
+        overlap < bestOverlap ||
+        (Math.abs(overlap - bestOverlap) < 0.001 && candidate.distance < best.distance)
+      ) {
+        best = candidate;
+        bestOverlap = overlap;
+      }
+    } catch {
+      // Try the next detour candidate.
+    }
+  }
+  return best;
+}
+
+function buildAvoidanceWaypoints(
+  start: [number, number],
+  end: [number, number],
+  offsetMeters: number
+): [number, number][] {
+  const midLng = (start[0] + end[0]) / 2;
+  const midLat = (start[1] + end[1]) / 2;
+
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const length = Math.hypot(dx, dy) || 1;
+  const perpX = -dy / length;
+  const perpY = dx / length;
+
+  const latMeters = 111320;
+  const lngMeters = Math.max(1, latMeters * Math.cos((midLat * Math.PI) / 180));
+  const offsetLat = (offsetMeters * perpY) / latMeters;
+  const offsetLng = (offsetMeters * perpX) / lngMeters;
+
+  return [
+    [midLng + offsetLng, midLat + offsetLat],
+    [midLng - offsetLng, midLat - offsetLat],
+    [midLng + offsetLng * 1.5, midLat + offsetLat * 1.5],
+    [midLng - offsetLng * 1.5, midLat - offsetLat * 1.5],
+  ];
 }

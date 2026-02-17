@@ -2,6 +2,7 @@ import { LRUCache } from 'lru-cache';
 
 import { env } from '../config/env';
 import { axios } from '../utils/http';
+import { logExternalError } from '../utils/logger';
 
 const cache = new LRUCache<string, GeocodeResult[]>({ max: 500, ttl: 1000 * 60 * 60 * 24 });
 
@@ -28,21 +29,26 @@ export async function geocode(
   };
   if (proximity) params.proximity = `${proximity[0]},${proximity[1]}`;
 
-  const res = await axios.get(url, { params, timeout: 10000 });
-  type Feature = {
-    place_name: string;
-    center: [number, number];
-    bbox?: [number, number, number, number];
-    context?: { text: string }[];
-  };
+  try {
+    const res = await axios.get(url, { params, timeout: 10000 });
+    type Feature = {
+      place_name: string;
+      center: [number, number];
+      bbox?: [number, number, number, number];
+      context?: { text: string }[];
+    };
 
-  const results: GeocodeResult[] = (res.data.features as Feature[]).map((f) => ({
-    name: f.place_name,
-    coordinates: [f.center[0], f.center[1]],
-    bbox: f.bbox,
-    context: f.context?.map((c) => c.text).join(', '),
-  }));
+    const results: GeocodeResult[] = (res.data.features as Feature[]).map((f) => ({
+      name: f.place_name,
+      coordinates: [f.center[0], f.center[1]],
+      bbox: f.bbox,
+      context: f.context?.map((c) => c.text).join(', '),
+    }));
 
-  cache.set(key, results);
-  return results;
+    cache.set(key, results);
+    return results;
+  } catch (err) {
+    logExternalError('mapbox', err, { query, proximity });
+    throw err;
+  }
 }
