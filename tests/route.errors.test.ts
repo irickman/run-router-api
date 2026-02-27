@@ -18,4 +18,14 @@ describe('route error responses', () => {
     expect(res.body.error).toBe('Route not found');
     expect(res.body.code).toBe('NOT_FOUND');
   });
+
+  it('returns structured not-found error for route refinement target', async () => {
+    const res = await request(app)
+      .post('/api/route/00000000-0000-0000-0000-000000000000/11111111-1111-1111-1111-111111111111/refine')
+      .send({ instruction: 'extend by 1 mile' })
+      .expect(404);
+
+    expect(res.body.error).toBe('Route not found');
+    expect(res.body.code).toBe('NOT_FOUND');
+  });
 });

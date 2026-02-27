@@ -7,7 +7,7 @@ primary_region = "sea"
 [env]
   NODE_ENV = "production"
   PORT = "3000"
-  GRAPHHOPPER_URL = "http://route-runner-graphhopper.flycast:8989"
+  GRAPHHOPPER_URL = "https://route-runner-graphhopper-v2.fly.dev"
 
 [http_service]
   internal_port = 3000

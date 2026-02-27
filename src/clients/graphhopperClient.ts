@@ -20,12 +20,13 @@ type RouteRequest = {
   algorithm?: string;
   alternative_route?: { max_paths: number; max_weight_factor: number; max_share_factor: number };
   custom_model?: unknown;
+  block_area?: string;
 };
 
 export async function route(
   points: [number, number][],
   profile: Profile,
-  opts: { algorithm?: string; alternative?: boolean; customModel?: unknown } = {}
+  opts: { algorithm?: string; alternative?: boolean; customModel?: unknown; blockArea?: string } = {}
 ): Promise<RouteResponse> {
   try {
     const body: RouteRequest = {
@@ -44,6 +45,7 @@ export async function route(
       };
     }
     if (opts.customModel) body.custom_model = opts.customModel;
+    if (opts.blockArea) body.block_area = opts.blockArea;
 
     const res = await axios.post(`${env.graphhopperUrl}/route`, body, { timeout: 15000 });
     type Path = {
@@ -60,7 +62,12 @@ export async function route(
     );
     return { distance: path.distance, time: path.time, points: coords, ascend: path.ascend };
   } catch (err) {
-    logExternalError('graphhopper', err, { points, profile, alternative: Boolean(opts.alternative) });
+    logExternalError('graphhopper', err, {
+      points,
+      profile,
+      alternative: Boolean(opts.alternative),
+      hasBlockArea: Boolean(opts.blockArea),
+    });
     throw err;
   }
 }

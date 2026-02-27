@@ -17,6 +17,7 @@ export interface RouteParameters {
     startPoint: string | null;
     endPoint: string | null;
     landmarks: string[];
+    avoidStreets?: string[];
     neighborhood: string | null;
     region: string | null;
   };
@@ -71,6 +72,7 @@ export interface RouteData {
   metadata: {
     shape: string;
     landmarks?: string[];
+    parentRouteId?: string;
   };
   originalQuery: string;
   name: string;

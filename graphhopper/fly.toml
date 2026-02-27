@@ -1,36 +1,41 @@
-app = "route-runner-graphhopper"
-primary_region = "sea"
+# fly.toml app configuration file generated for route-runner-graphhopper on 2026-02-18T23:04:38-08:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'route-runner-graphhopper-v2'
+primary_region = 'sjc'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  JAVA_OPTS = "-Xmx3g -Xms1g"
+  JAVA_OPTS = '-Xmx3g -Xms1g'
+
+[[mounts]]
+  source = 'graphhopper_data_v2'
+  destination = '/data'
+  initial_size = '60gb'
 
 [http_service]
   internal_port = 8989
-  force_https = false
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
+
   [http_service.concurrency]
-    type = "requests"
-    soft_limit = 50
+    type = 'requests'
     hard_limit = 100
+    soft_limit = 50
 
-[[http_service.checks]]
-  grace_period = "120s"
-  interval = "30s"
-  method = "GET"
-  timeout = "10s"
-  path = "/health"
-  protocol = "http"
-
-[[mounts]]
-  source = "graphhopper_data"
-  destination = "/data"
-  initial_size = "10gb"
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '10s'
+    grace_period = '1h0m0s'
+    method = 'GET'
+    path = '/health'
+    protocol = 'http'
 
 [[vm]]
-  size = "performance-2x"
-  memory = "4gb"
+  size = 'performance-2x'
+  memory = '4gb'

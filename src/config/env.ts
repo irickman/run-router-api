@@ -33,4 +33,7 @@ export const env = {
   corsOrigin: process.env.CORS_ORIGIN || '*',
   rateLimitPerHour: Number(process.env.RATE_LIMIT_MAX_PER_HOUR || '120'),
   parameterExtractionTimeoutMs: Number(process.env.PARAM_EXTRACTION_TIMEOUT_MS || '30000'),
+  requestLogSpreadsheetId: process.env.REQUEST_LOG_SPREADSHEET_ID || '',
+  requestLogSheetName: process.env.REQUEST_LOG_SHEET_NAME || 'request_log',
+  googleAuthFile: process.env.GOOGLE_AUTH_FILE || 'google-auth.json',
 };

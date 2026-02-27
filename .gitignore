@@ -5,3 +5,13 @@ node_modules
 dist
 gh-data
 tmp-schema.ts
+
+# iOS build artifacts (Capacitor)
+frontend/ios/App/App/public
+frontend/ios/App/Pods
+frontend/ios/DerivedData
+*.xcworkspace/xcuserdata
+*.xcodeproj/xcuserdata
+
+# Google service account key (local only)
+google-auth.json

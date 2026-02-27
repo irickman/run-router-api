@@ -1,4 +1,5 @@
 import { route, Profile } from '../clients/graphhopperClient';
+import { hasHairpin } from './routeSmoothing';
 
 export type EdgeSet = Set<string>;
 
@@ -26,12 +27,14 @@ export async function penalizedRoute(
   points: [number, number][],
   profile: Profile,
   avoidedEdges: EdgeSet,
-  customModel?: unknown
+  customModel?: unknown,
+  blockArea?: string
 ) {
   // Primary link-penalty path: GraphHopper alternatives.
   const alt = await route(points, profile, {
     alternative: true,
     customModel,
+    blockArea,
   });
   const altOverlap = sharedEdgeRatioSets(avoidedEdges, edgeKeys(alt.points));
   if (altOverlap <= 0.05 || points.length !== 2) return alt;
@@ -40,11 +43,14 @@ export async function penalizedRoute(
   const [start, end] = points;
   const detours = buildAvoidanceWaypoints(start, end, alt.distance * 0.25);
 
+  const maxDistance = alt.distance * 1.2;
   let best = alt;
   let bestOverlap = altOverlap;
   for (const detour of detours) {
     try {
-      const candidate = await route([start, detour, end], profile, { customModel });
+      const candidate = await route([start, detour, end], profile, { customModel, blockArea });
+      if (candidate.distance > maxDistance) continue;
+      if (hasHairpin(candidate.points)) continue;
       const overlap = sharedEdgeRatioSets(avoidedEdges, edgeKeys(candidate.points));
       if (
         overlap < bestOverlap ||

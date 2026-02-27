@@ -19,6 +19,7 @@ export const RouteParametersJsonSchema = {
         startPoint: { type: ['string', 'null'] },
         endPoint: { type: ['string', 'null'] },
         landmarks: { type: 'array', items: { type: 'string' } },
+        avoidStreets: { type: 'array', items: { type: 'string' } },
         neighborhood: { type: ['string', 'null'] },
         region: { type: ['string', 'null'] },
       },

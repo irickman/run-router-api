@@ -19,6 +19,10 @@ describe('POST /api/route', () => {
       preferences: { difficulty: null, scenery: 'high', safetyPriority: 'normal', crowdedness: 'any', waterFountains: false, restrooms: false },
       confidence: { overall: 0.9, needsClarification: [], assumptions: [] },
     } as any);
+    vi.spyOn(nlp, 'refineRouteParameters').mockImplementation(async (params) => ({
+      ...params,
+      distance: { ...params.distance, value: params.distance.value + 1 },
+    }));
 
     // Mapbox geocode mock
     nock('https://api.mapbox.com')
@@ -76,5 +80,22 @@ describe('POST /api/route', () => {
     expect(res.body.geometry.coordinates.length).toBeGreaterThan(0);
     expect(res.body.stats.distance_miles).toBeGreaterThan(0);
     expect(res.body.gpxUrl).toContain('/gpx');
+  });
+
+  it('refines an existing route and links parent route metadata', async () => {
+    const created = await server
+      .post('/api/route')
+      .send({ query: '5 mile loop around Green Lake', location: { lat: 47.67, lng: -122.33 } })
+      .expect(200);
+
+    const refined = await server
+      .post(`/api/route/${created.body.sessionId}/${created.body.routeId}/refine`)
+      .send({ instruction: 'extend by 1 mile' })
+      .expect(200);
+
+    expect(refined.body.sessionId).toBe(created.body.sessionId);
+    expect(refined.body.routeId).not.toBe(created.body.routeId);
+    expect(refined.body.metadata.parentRouteId).toBe(created.body.routeId);
+    expect(refined.body.gpxUrl).toContain('/gpx');
   });
 });

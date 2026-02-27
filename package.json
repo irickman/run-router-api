@@ -2,7 +2,6 @@
   "name": "run-router-api",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -10,7 +9,8 @@
     "start": "node dist/index.js",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "evals:run": "tsx src/evals/runSheetEvals.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
@@ -21,6 +21,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-rate-limit": "^8.2.1",
+    "google-auth-library": "^9.15.1",
     "lru-cache": "^10.2.2",
     "openai": "^4.48.0",
     "uuid": "^9.0.1",

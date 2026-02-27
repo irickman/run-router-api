@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { openAiMock, anthropicMock } = vi.hoisted(() => ({
+const { openAiMock, anthropicMock, anthropicRefineMock } = vi.hoisted(() => ({
   openAiMock: vi.fn(),
   anthropicMock: vi.fn(),
+  anthropicRefineMock: vi.fn(),
 }));
 
 vi.mock('../src/clients/openaiClient', () => ({
@@ -11,9 +12,10 @@ vi.mock('../src/clients/openaiClient', () => ({
 
 vi.mock('../src/clients/anthropicClient', () => ({
   extractParametersWithAnthropic: anthropicMock,
+  refineParametersWithAnthropic: anthropicRefineMock,
 }));
 
-import { extractRouteParameters } from '../src/services/nlp';
+import { extractRouteParameters, refineRouteParameters } from '../src/services/nlp';
 
 const baseParams = {
   distance: { value: 5, unit: 'miles', precision: 'exact', originalText: '5 mile' },
@@ -72,5 +74,32 @@ describe('extractRouteParameters', () => {
     expect(out.distance.unit).toBe('kilometers');
     expect(out.location.endPoint?.toLowerCase()).toContain('golden gardens');
     expect(out.terrain.surfaces[0].type).toBe('trail');
+  });
+});
+
+describe('refineRouteParameters', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('uses Anthropic refinement when available', async () => {
+    anthropicRefineMock.mockResolvedValue({
+      ...baseParams,
+      distance: { ...baseParams.distance, value: 6 },
+    });
+
+    const out = await refineRouteParameters(baseParams as any, 'extend by 1 mile');
+
+    expect(out.distance.value).toBe(6);
+    expect(anthropicRefineMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to heuristic refinement on Anthropic failure', async () => {
+    anthropicRefineMock.mockRejectedValue(new Error('anthropic down'));
+
+    const out = await refineRouteParameters(baseParams as any, 'extend by 1 mile and avoid 45th street');
+
+    expect(out.distance.value).toBeGreaterThan(5);
+    expect(out.location.avoidStreets).toContain('45th street');
   });
 });

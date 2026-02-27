@@ -1,5 +1,5 @@
 graphhopper:
-  datareader.file: /data/washington-latest.osm.pbf
+  datareader.file: /data/us-latest.osm.pbf
   graph.location: /data/graph-cache
   custom_models.directory: /graphhopper/custom-models
   profiles:
@@ -13,6 +13,7 @@ graphhopper:
     - profile: trail
   graph.encoded_values: foot_access,foot_average_speed,foot_priority,road_class,road_environment,surface,average_slope
   graph.elevation.provider: srtm
+  graph.elevation.cache_dir: /data/srtm-cache
   import.osm.ignored_highways: motorway,trunk
   graph.dataaccess.default_type: MMAP
   routing.non_ch.max_waypoint_distance: 1000000
