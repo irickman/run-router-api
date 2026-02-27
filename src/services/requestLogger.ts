@@ -2,7 +2,7 @@ import axios from 'axios';
 import { JWT } from 'google-auth-library';
 
 import { env } from '../config/env';
-import { logError } from '../utils/logger';
+import { logError, logInfo } from '../utils/logger';
 
 const HEADERS = [
   'timestamp',
@@ -109,6 +109,7 @@ async function flush() {
       { values: rows },
       { headers: { Authorization: `Bearer ${token.access_token}` }, timeout: 10_000 },
     );
+    logInfo('request logger flushed', { rowCount: rows.length });
   } catch (err) {
     logError('request logger flush failed', {
       rowCount: rows.length,
