@@ -51,10 +51,19 @@ function getJwtClient(): JWT | null {
   if (!env.requestLogSpreadsheetId) return null;
   if (jwtClient) return jwtClient;
   try {
-    jwtClient = new JWT({
-      keyFile: env.googleAuthFile,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
+    if (env.googleServiceAccountJson) {
+      const creds = JSON.parse(env.googleServiceAccountJson);
+      jwtClient = new JWT({
+        email: creds.client_email,
+        key: creds.private_key,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      });
+    } else {
+      jwtClient = new JWT({
+        keyFile: env.googleAuthFile,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      });
+    }
     return jwtClient;
   } catch {
     return null;
