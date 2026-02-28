@@ -5,7 +5,7 @@ import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
 import routeRouter from './routes/route';
 import healthRouter from './routes/health';
-import { ensureRequestLogHeaders } from './services/requestLogger';
+import { ensureSheetTabs } from './services/requestLogger';
 
 const limiter = rateLimit({ windowMs: 60 * 60 * 1000, max: env.rateLimitPerHour });
 
@@ -24,7 +24,7 @@ app.use('/api', limiter, routeRouter);
 app.use('/', healthRouter);
 
 export function start() {
-  ensureRequestLogHeaders().catch(() => {});
+  ensureSheetTabs().catch(() => {});
   const server = app.listen(env.port, () => {
     console.log(`Server running on port ${env.port}`);
   });

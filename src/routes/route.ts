@@ -6,6 +6,7 @@ import { extractRouteParameters, refineRouteParameters } from '../services/nlp';
 import { defaultRouteName, generateRouteName } from '../services/routeNaming';
 import { buildRoute } from '../services/routeBuilder';
 import { logRequest } from '../services/requestLogger';
+import { evaluateRoute } from '../services/routeEval';
 import { getRoute, saveRoute } from '../services/storage';
 import { metersToMiles, haversineDistance } from '../utils/geometry';
 import { toGPX } from '../utils/gpx';
@@ -94,22 +95,27 @@ router.post('/route', async (req, res) => {
       profile,
       timings: { parseMs, routeMs, totalMs },
     });
+    const distanceRequested = `${params.distance.value} ${params.distance.unit}`;
+    const distanceMilesActual = metersToMiles(distanceMeters);
     logRequest({
       timestamp: routeData.createdAt,
-      requestId: routeId,
-      endpoint: 'POST /api/route',
-      query,
-      locationLat: loc.lat,
-      locationLng: loc.lng,
-      shape: params.shape.type,
-      distanceValue: params.distance.value,
-      distanceUnit: params.distance.unit,
-      landmarks: params.location.landmarks,
       routeId,
-      distanceMetersActual: distanceMeters,
+      query,
+      shape: params.shape.type,
+      distanceRequested,
+      distanceMilesActual,
       elevationGainFt: elevationGainFeet,
+      landmarks: params.location.landmarks,
       durationMs: totalMs,
       error: '',
+    });
+    evaluateRoute({
+      query,
+      routeId,
+      shape: params.shape.type,
+      distanceRequested,
+      distanceMilesActual,
+      elevationGainFt: elevationGainFeet,
     });
     res.json({
       sessionId,
@@ -140,18 +146,13 @@ router.post('/route', async (req, res) => {
     });
     logRequest({
       timestamp: new Date().toISOString(),
-      requestId: '',
-      endpoint: 'POST /api/route',
-      query: req.body?.query || '',
-      locationLat: req.body?.location?.lat ?? null,
-      locationLng: req.body?.location?.lng ?? null,
-      shape: '',
-      distanceValue: 0,
-      distanceUnit: '',
-      landmarks: [],
       routeId: '',
-      distanceMetersActual: null,
+      query: req.body?.query || '',
+      shape: '',
+      distanceRequested: '',
+      distanceMilesActual: null,
       elevationGainFt: null,
+      landmarks: [],
       durationMs: Date.now() - requestStarted,
       error: message,
     });

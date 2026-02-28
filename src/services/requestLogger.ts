@@ -4,38 +4,28 @@ import { JWT } from 'google-auth-library';
 import { env } from '../config/env';
 import { logError, logInfo } from '../utils/logger';
 
-const HEADERS = [
+const REQUEST_HEADERS = [
   'timestamp',
-  'request_id',
-  'endpoint',
-  'query',
-  'location_lat',
-  'location_lng',
-  'shape',
-  'distance_value',
-  'distance_unit',
-  'landmarks',
   'route_id',
-  'distance_meters_actual',
+  'query',
+  'shape',
+  'distance_requested',
+  'distance_actual_miles',
   'elevation_gain_ft',
+  'landmarks',
   'duration_ms',
   'error',
 ];
 
 export interface RequestLogEntry {
   timestamp: string;
-  requestId: string;
-  endpoint: string;
-  query: string;
-  locationLat: number | null;
-  locationLng: number | null;
-  shape: string;
-  distanceValue: number;
-  distanceUnit: string;
-  landmarks: string[];
   routeId: string;
-  distanceMetersActual: number | null;
+  query: string;
+  shape: string;
+  distanceRequested: string;
+  distanceMilesActual: number | null;
   elevationGainFt: number | null;
+  landmarks: string[];
   durationMs: number;
   error: string;
 }
@@ -73,18 +63,13 @@ function getJwtClient(): JWT | null {
 function entryToRow(entry: RequestLogEntry): unknown[] {
   return [
     entry.timestamp,
-    entry.requestId,
-    entry.endpoint,
-    entry.query,
-    entry.locationLat ?? '',
-    entry.locationLng ?? '',
-    entry.shape,
-    entry.distanceValue,
-    entry.distanceUnit,
-    entry.landmarks.join(', '),
     entry.routeId,
-    entry.distanceMetersActual ?? '',
+    entry.query,
+    entry.shape,
+    entry.distanceRequested,
+    entry.distanceMilesActual != null ? Math.round(entry.distanceMilesActual * 100) / 100 : '',
     entry.elevationGainFt != null ? Math.round(entry.elevationGainFt) : '',
+    entry.landmarks.join(', '),
     entry.durationMs,
     entry.error,
   ];
@@ -100,9 +85,8 @@ async function flush() {
     const token = await client.authorize();
     if (!token.access_token) return;
 
-    const sheetName = env.requestLogSheetName;
     const spreadsheetId = env.requestLogSpreadsheetId!;
-    const range = encodeURIComponent(`${sheetName}!A:Z`);
+    const range = encodeURIComponent(`${env.requestLogSheetName}!A:Z`);
 
     await axios.post(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
@@ -136,41 +120,94 @@ export function logRequest(entry: RequestLogEntry) {
   }
 }
 
-export async function ensureRequestLogHeaders() {
-  const client = getJwtClient();
-  if (!client || !env.requestLogSpreadsheetId) return;
+async function ensureTab(accessToken: string, spreadsheetId: string, tabName: string, headers: string[]) {
+  const meta = await axios.get(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  const sheets = (meta.data.sheets as { properties?: { title?: string } }[]) || [];
+  if (!sheets.some((s) => s.properties?.title === tabName)) {
+    await axios.post(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+      { requests: [{ addSheet: { properties: { title: tabName } } }] },
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+  }
+  const range = encodeURIComponent(`${tabName}!A1`);
+  await axios.put(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=RAW`,
+    { values: [headers] },
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+}
 
+const EVAL_HEADERS = [
+  'timestamp',
+  'route_id',
+  'query',
+  'pass',
+  'score',
+  'evaluation',
+  'distance_requested',
+  'distance_actual_miles',
+  'distance_accuracy_pct',
+];
+
+export interface EvalLogEntry {
+  timestamp: string;
+  routeId: string;
+  query: string;
+  pass: boolean;
+  score: number;
+  evaluation: string;
+  distanceRequested: string;
+  distanceMilesActual: number;
+  distanceAccuracyPct: number;
+}
+
+export function logEval(entry: EvalLogEntry) {
+  if (!env.requestLogSpreadsheetId) return;
+  const row = [
+    entry.timestamp,
+    entry.routeId,
+    entry.query,
+    entry.pass,
+    Math.round(entry.score * 100) / 100,
+    entry.evaluation,
+    entry.distanceRequested,
+    Math.round(entry.distanceMilesActual * 100) / 100,
+    Math.round(entry.distanceAccuracyPct * 10) / 10,
+  ];
+  appendRow(env.requestLogSpreadsheetId, 'ai_evals', row);
+}
+
+async function appendRow(spreadsheetId: string, tabName: string, row: unknown[]) {
+  const client = getJwtClient();
+  if (!client) return;
   try {
     const token = await client.authorize();
     if (!token.access_token) return;
-
-    const spreadsheetId = env.requestLogSpreadsheetId;
-    const sheetName = env.requestLogSheetName;
-
-    // Create the tab if it doesn't exist.
-    const meta = await axios.get(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`,
-      { headers: { Authorization: `Bearer ${token.access_token}` } },
-    );
-    const sheets = (meta.data.sheets as { properties?: { title?: string } }[]) || [];
-    const exists = sheets.some((s) => s.properties?.title === sheetName);
-    if (!exists) {
-      await axios.post(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
-        { requests: [{ addSheet: { properties: { title: sheetName } } }] },
-        { headers: { Authorization: `Bearer ${token.access_token}` } },
-      );
-    }
-
-    const range = encodeURIComponent(`${sheetName}!A1`);
-    await axios.put(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=RAW`,
-      { values: [HEADERS] },
-      { headers: { Authorization: `Bearer ${token.access_token}` } },
+    const range = encodeURIComponent(`${tabName}!A:Z`);
+    await axios.post(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      { values: [row] },
+      { headers: { Authorization: `Bearer ${token.access_token}` }, timeout: 10_000 },
     );
   } catch (err) {
-    logError('request logger header setup failed', {
-      error: err instanceof Error ? err.message : String(err),
-    });
+    logError('eval log failed', { error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+export async function ensureSheetTabs() {
+  const client = getJwtClient();
+  if (!client || !env.requestLogSpreadsheetId) return;
+  try {
+    const token = await client.authorize();
+    if (!token.access_token) return;
+    const id = env.requestLogSpreadsheetId;
+    await ensureTab(token.access_token, id, env.requestLogSheetName, REQUEST_HEADERS);
+    await ensureTab(token.access_token, id, 'ai_evals', EVAL_HEADERS);
+  } catch (err) {
+    logError('sheet tab setup failed', { error: err instanceof Error ? err.message : String(err) });
   }
 }
