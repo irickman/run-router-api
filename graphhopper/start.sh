@@ -10,15 +10,20 @@ if [ ! -f "$PBF_FILE" ]; then
 fi
 
 VERSION_FILE="$GRAPH_DIR/.graph_version"
-if [ -d "$GRAPH_DIR" ] && [ -f "$VERSION_FILE" ] && [ "$(cat "$VERSION_FILE")" = "$GRAPH_VERSION" ] && [ -f "$GRAPH_DIR/location_index" ] && [ -f "$GRAPH_DIR/nodes" ] && ls "$GRAPH_DIR"/landmarks_* 1>/dev/null 2>&1; then
-  echo "Complete graph cache found (v$GRAPH_VERSION) — skipping import, loading directly."
-else
-  if [ -d "$GRAPH_DIR" ]; then
-    echo "Graph cache missing or outdated (expected v$GRAPH_VERSION), cleaning up..."
-    rm -rf "$GRAPH_DIR"
-  fi
-  mkdir -p "$GRAPH_DIR"
+GCS_GRAPH_URL="https://storage.googleapis.com/gen-lang-client-0851822254-gh-graph/graph-cache.tar.gz"
+
+if [ -d "$GRAPH_DIR" ] && [ -f "$GRAPH_DIR/location_index" ] && [ -f "$GRAPH_DIR/nodes" ] && ls "$GRAPH_DIR"/landmarks_* 1>/dev/null 2>&1; then
+  echo "Complete graph cache found — skipping import, loading directly."
   echo "$GRAPH_VERSION" > "$VERSION_FILE"
+else
+  echo "Graph cache missing or incomplete. Downloading pre-built graph from GCS..."
+  rm -rf "$GRAPH_DIR"
+  wget -O /data/graph-cache.tar.gz "$GCS_GRAPH_URL"
+  echo "Download complete. Extracting..."
+  tar xzf /data/graph-cache.tar.gz -C /data/
+  rm /data/graph-cache.tar.gz
+  echo "$GRAPH_VERSION" > "$GRAPH_DIR/.graph_version"
+  echo "Graph cache restored from GCS."
 fi
 
 if [ ! -d "$SRTM_CACHE" ] || [ "$(ls "$SRTM_CACHE"/*.hgt.zip 2>/dev/null | wc -l)" -lt 1000 ]; then

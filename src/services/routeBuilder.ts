@@ -32,7 +32,9 @@ export async function buildRoute(ctx: BuildContext): Promise<BuiltRoute> {
 
   if (useLandmark) await checkLandmarkFeasibility(ctx);
 
-  const baseRoutingModel = buildElevationModel(ctx.params.terrain.elevation);
+  const elevationModel = buildElevationModel(ctx.params.terrain.elevation);
+  const popularityModel = buildPopularityModel(ctx.params.preferences.crowdedness);
+  const baseRoutingModel = mergeCustomModels(elevationModel, popularityModel);
   const blockArea = await resolveAvoidBlockArea(ctx.start, ctx.params.location.avoidStreets);
 
   let best: BuiltRoute;
@@ -671,4 +673,42 @@ function buildElevationModel(elevation: BuildContext['params']['terrain']['eleva
   return {
     priority: [{ if: 'average_slope >= 3', multiply_by: '1.08' }],
   };
+}
+
+function buildPopularityModel(
+  crowdedness: 'busy' | 'quiet' | 'any'
+): Record<string, unknown[]> | undefined {
+  if (crowdedness === 'busy') {
+    return {
+      priority: [
+        { if: 'popularity >= 1.3', multiply_by: '1.4' },
+        { if: 'popularity >= 1.1', multiply_by: '1.2' },
+        { if: 'popularity < 0.9 && popularity > 0', multiply_by: '0.7' },
+      ],
+    };
+  }
+  if (crowdedness === 'quiet') {
+    return {
+      priority: [
+        { if: 'popularity >= 1.3', multiply_by: '0.6' },
+        { if: 'popularity < 0.9 && popularity > 0', multiply_by: '1.3' },
+      ],
+    };
+  }
+  return undefined;
+}
+
+function mergeCustomModels(
+  ...models: (Record<string, unknown[]> | unknown | undefined)[]
+): Record<string, unknown[]> | undefined {
+  const merged: Record<string, unknown[]> = {};
+  for (const model of models) {
+    if (!model || typeof model !== 'object') continue;
+    for (const [key, value] of Object.entries(model as Record<string, unknown[]>)) {
+      if (!Array.isArray(value)) continue;
+      if (!merged[key]) merged[key] = [];
+      merged[key].push(...value);
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
