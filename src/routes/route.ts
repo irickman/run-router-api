@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 
 import { geocode, bboxFromProximity } from '../clients/mapboxClient';
+import { nominatimGeocode } from '../clients/nominatimClient';
 import { extractRouteParameters, refineRouteParameters } from '../services/nlp';
 import { defaultRouteName, generateRouteName } from '../services/routeNaming';
 import { buildRoute, refineSegment } from '../services/routeBuilder';
@@ -42,7 +43,10 @@ router.post('/route', async (req, res) => {
     if (params.location.startPoint) {
       try {
         const bbox = bboxFromProximity(start);
-        const startGeo = await geocode(params.location.startPoint, start, bbox);
+        let startGeo = await geocode(params.location.startPoint, start, bbox);
+        if (!startGeo[0] || haversineDistance(start, startGeo[0].coordinates) >= 40_234) {
+          try { startGeo = await nominatimGeocode(params.location.startPoint, start); } catch {}
+        }
         if (startGeo[0] && haversineDistance(start, startGeo[0].coordinates) < 40_234) start = startGeo[0].coordinates;
       } catch {
         // Keep incoming location as fallback if start geocoding fails.

@@ -1,6 +1,7 @@
 /* eslint-disable import/order */
 import { Profile, route } from '../clients/graphhopperClient';
-import { geocode, bboxFromProximity } from '../clients/mapboxClient';
+import { geocode, bboxFromProximity, GeocodeResult } from '../clients/mapboxClient';
+import { nominatimGeocode } from '../clients/nominatimClient';
 import { RouteParametersParsed } from '../utils/jsonSchema';
 import { bboxFromPoint } from '../utils/bbox';
 import { fallbackPerimeter, perimeterWaypoints } from './perimeter';
@@ -114,11 +115,33 @@ async function correctDistance(
 
 const MILES_25_METERS = 40_234;
 
+async function geocodeWithFallback(
+  query: string,
+  proximity: [number, number],
+  bbox?: [number, number, number, number],
+): Promise<GeocodeResult[]> {
+  try {
+    const results = await geocode(query, proximity, bbox);
+    if (results.length > 0 && haversineDistance(proximity, results[0].coordinates) < MILES_25_METERS) {
+      return results;
+    }
+    const nomResults = await nominatimGeocode(query, proximity);
+    if (nomResults.length > 0) return nomResults;
+    return results;
+  } catch {
+    try {
+      return await nominatimGeocode(query, proximity);
+    } catch {
+      return [];
+    }
+  }
+}
+
 async function checkLandmarkFeasibility(ctx: BuildContext) {
   const bbox = bboxFromProximity(ctx.start);
   for (const name of ctx.params.location.landmarks) {
     try {
-      const [geo] = await geocode(name, ctx.start, bbox);
+      const [geo] = await geocodeWithFallback(name, ctx.start, bbox);
       if (!geo) continue;
       const dist = haversineDistance(ctx.start, geo.coordinates);
       const minFeasible = dist * 2 * 1.3;
@@ -175,7 +198,7 @@ async function landmarkRoute(
   const geocoded: [number, number][] = [];
   for (const name of ctx.params.location.landmarks) {
     try {
-      const [geo] = await geocode(name, ctx.start, bbox);
+      const [geo] = await geocodeWithFallback(name, ctx.start, bbox);
       if (geo && haversineDistance(ctx.start, geo.coordinates) < MILES_25_METERS) geocoded.push(geo.coordinates);
     } catch {
       // Landmark geocoding failures are non-blocking; perimeter fallback handles route continuity.
@@ -467,7 +490,7 @@ async function resolveEnd(ctx: BuildContext): Promise<[number, number] | null> {
   if (name) {
     try {
       const bbox = bboxFromProximity(ctx.start);
-      const [geo] = await geocode(name, ctx.start, bbox);
+      const [geo] = await geocodeWithFallback(name, ctx.start, bbox);
       if (geo && haversineDistance(ctx.start, geo.coordinates) < MILES_25_METERS) return geo.coordinates;
     } catch {
       // Start location fallback is intentional for point-to-point geocoding misses.

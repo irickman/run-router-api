@@ -11,6 +11,7 @@ export const RouteParametersSchema = z.object({
     startPoint: z.string().nullable(),
     endPoint: z.string().nullable(),
     landmarks: z.array(z.string()),
+    landmarkTraversalModes: z.array(z.enum(['around', 'through', 'along'])).optional(),
     avoidStreets: z.array(z.string()).optional(),
     neighborhood: z.string().nullable(),
     region: z.string().nullable(),

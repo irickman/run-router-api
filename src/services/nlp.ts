@@ -131,12 +131,21 @@ function heuristicParse(query: string): RouteParametersParsed {
 
   const startPoint = extractIntentTarget(normalized, /(?:from|starting at)\s+([^,.;]+)/i);
   const endPoint = extractIntentTarget(normalized, /(?:to|ending at|toward)\s+([^,.;]+)/i);
-  const landmarkCandidates = [
-    extractIntentTarget(normalized, /(?:around|loop around|circle)\s+([^,.;]+)/i),
-    extractIntentTarget(normalized, /(?:through|across)\s+([^,.;]+)/i),
-    extractIntentTarget(normalized, /(?:along|following)\s+([^,.;]+)/i),
-    extractIntentTarget(normalized, /(?:via|past)\s+([^,.;]+)/i),
-  ].filter((v): v is string => Boolean(v));
+  const traversalPatterns: { pattern: RegExp; mode: 'around' | 'through' | 'along' }[] = [
+    { pattern: /(?:around|loop around|circle)\s+([^,.;]+)/i, mode: 'around' },
+    { pattern: /(?:through|across)\s+([^,.;]+)/i, mode: 'through' },
+    { pattern: /(?:along|following)\s+([^,.;]+)/i, mode: 'along' },
+    { pattern: /(?:via|past)\s+([^,.;]+)/i, mode: 'through' },
+  ];
+  const landmarkCandidates: string[] = [];
+  const traversalModes: ('around' | 'through' | 'along')[] = [];
+  for (const { pattern, mode } of traversalPatterns) {
+    const target = extractIntentTarget(normalized, pattern);
+    if (target && !landmarkCandidates.includes(target)) {
+      landmarkCandidates.push(target);
+      traversalModes.push(mode);
+    }
+  }
 
   const shape: RouteParametersParsed['shape'] =
     /point-to-point|point to point/i.test(normalized)
@@ -150,7 +159,8 @@ function heuristicParse(query: string): RouteParametersParsed {
     location: {
       startPoint: startPoint || null,
       endPoint: endPoint || null,
-      landmarks: Array.from(new Set(landmarkCandidates)),
+      landmarks: landmarkCandidates,
+      landmarkTraversalModes: traversalModes.length ? traversalModes : undefined,
       avoidStreets: extractAvoidStreets(normalized),
       neighborhood: null,
       region: null,

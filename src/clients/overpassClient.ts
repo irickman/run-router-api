@@ -29,17 +29,18 @@ export async function fetchPerimeterAndTrails(
   if (cached) return cached;
 
   const bboxStr = `${bbox[1]},${bbox[0]},${bbox[3]},${bbox[2]}`;
+  const safeName = escapeOverpassString(name);
   const query = `
   [out:json][timeout:30];
   (
-    way["name"="${name}"]["natural"="water"](${bboxStr});
-    relation["name"="${name}"]["natural"="water"](${bboxStr});
-    way["name"="${name}"]["leisure"~"^(park|garden|nature_reserve)$"](${bboxStr});
-    relation["name"="${name}"]["leisure"~"^(park|garden|nature_reserve)$"](${bboxStr});
-    way["name"="${name}"]["boundary"="national_park"](${bboxStr});
-    relation["name"="${name}"]["boundary"="national_park"](${bboxStr});
-    way["name"="${name}"]["landuse"="recreation_ground"](${bboxStr});
-    relation["name"="${name}"]["landuse"="recreation_ground"](${bboxStr});
+    way["name"="${safeName}"]["natural"="water"](${bboxStr});
+    relation["name"="${safeName}"]["natural"="water"](${bboxStr});
+    way["name"="${safeName}"]["leisure"~"^(park|garden|nature_reserve)$"](${bboxStr});
+    relation["name"="${safeName}"]["leisure"~"^(park|garden|nature_reserve)$"](${bboxStr});
+    way["name"="${safeName}"]["boundary"="national_park"](${bboxStr});
+    relation["name"="${safeName}"]["boundary"="national_park"](${bboxStr});
+    way["name"="${safeName}"]["landuse"="recreation_ground"](${bboxStr});
+    relation["name"="${safeName}"]["landuse"="recreation_ground"](${bboxStr});
   )->.feature;
   way(around.feature:50)["highway"~"^(footway|path|cycleway|track)$"]->.trails;
   .feature out body geom;
@@ -61,6 +62,10 @@ export async function fetchPerimeterAndTrails(
   }
   logWarn('overpass exhausted all endpoints', { name, bbox });
   return null;
+}
+
+function escapeOverpassString(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 type OverpassElement = {

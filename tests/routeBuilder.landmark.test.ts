@@ -8,6 +8,11 @@ const { geocodeMock, perimeterMock, routeMock } = vi.hoisted(() => ({
 
 vi.mock('../src/clients/mapboxClient', () => ({
   geocode: geocodeMock,
+  bboxFromProximity: () => [-122.7, 47.3, -122.0, 48.0],
+}));
+
+vi.mock('../src/clients/nominatimClient', () => ({
+  nominatimGeocode: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../src/services/perimeter', () => ({
@@ -24,7 +29,7 @@ import { buildRoute } from '../src/services/routeBuilder';
 describe('landmark route distance optimization', () => {
   it('inserts intermediate waypoints when landmark route is too short', async () => {
     geocodeMock.mockResolvedValue([{ coordinates: [-122.34, 47.68] }]);
-    perimeterMock.mockResolvedValue([]);
+    perimeterMock.mockResolvedValue({ waypoints: [], featureType: 'other' });
     routeMock.mockImplementation(async (points: [number, number][]) => {
       const distance = points.length === 2 ? 1000 : 2600;
       const last = points[points.length - 1];
