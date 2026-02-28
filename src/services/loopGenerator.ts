@@ -318,11 +318,8 @@ export async function generateLoop(
   });
 
   const best = circuits[0];
-  if (
-    Math.abs(best.totalDistance - targetDistanceMeters) / targetDistanceMeters > 0.05 ||
-    best.overlapRatio > 0.05
-  ) {
-    throw new Error('Unable to reach target distance within tolerance');
+  if (best.overlapRatio > 0.25) {
+    throw new Error('No circuit found with acceptable overlap');
   }
 
   return best;

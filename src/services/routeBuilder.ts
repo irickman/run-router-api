@@ -6,8 +6,9 @@ import { bboxFromPoint } from '../utils/bbox';
 import { fallbackPerimeter, perimeterWaypoints } from './perimeter';
 import { generateLoop } from './loopGenerator';
 import { edgeKeys, penalizedRoute, sharedEdgeRatioSets, EdgeSet } from '../utils/sharedEdges';
-import { elevationGainFromCoords, haversineDistance } from '../utils/geometry';
+import { elevationGainFromCoords, haversineDistance, metersToMiles } from '../utils/geometry';
 import { smoothRoute } from '../utils/routeSmoothing';
+import { RouteConstraintError } from '../utils/httpErrors';
 
 interface BuildContext {
   params: RouteParametersParsed;
@@ -26,17 +27,37 @@ export interface BuiltRoute {
 export async function buildRoute(ctx: BuildContext): Promise<BuiltRoute> {
   const shape = ctx.params.shape.type;
   const hasLandmark = ctx.params.location.landmarks.length > 0;
+  const useLandmark = shape !== 'point-to-point' && hasLandmark;
+
+  if (useLandmark) await checkLandmarkFeasibility(ctx);
+
   const baseRoutingModel = buildElevationModel(ctx.params.terrain.elevation);
   const blockArea = await resolveAvoidBlockArea(ctx.start, ctx.params.location.avoidStreets);
 
-  let best = await buildRouteForShape(
-    ctx,
-    shape,
-    // Point-to-point requests should route directly to endPoint first, even if landmarks were extracted.
-    shape === 'point-to-point' ? false : hasLandmark,
-    baseRoutingModel,
-    blockArea
-  );
+  let best: BuiltRoute;
+  try {
+    if (useLandmark) {
+      best = await correctDistance(
+        (scaled) => buildRouteForShape(
+          { ...ctx, targetMeters: scaled }, shape, true, baseRoutingModel, blockArea
+        ),
+        ctx.targetMeters,
+      );
+    } else {
+      best = await buildRouteForShape(ctx, shape, false, baseRoutingModel, blockArea);
+    }
+  } catch (err) {
+    if (err instanceof RouteConstraintError) throw err;
+    const msg = err instanceof Error ? err.message : '';
+    if (msg.includes('No circuit') || msg.includes('tolerance') || msg.includes('no path') || msg.includes('routing failed')) {
+      throw new RouteConstraintError({
+        reason: 'NO_ROUTE_FOUND',
+        explanation: 'Could not find a routable path for this request. Try a different starting point, adjust your distance, or try a different route shape.',
+      });
+    }
+    throw err;
+  }
+
   const maxGain = ctx.params.terrain.elevation.maxGain;
   if (maxGain !== null && best.ascend > maxGain + 30.48) {
     const constrainedModel = buildElevationModel({
@@ -44,8 +65,10 @@ export async function buildRoute(ctx: BuildContext): Promise<BuiltRoute> {
       profile: 'flat',
       preference: 'minimize',
     });
-    const constrained = await buildRouteForShape(ctx, shape, hasLandmark, constrainedModel, blockArea);
-    if (constrained.ascend < best.ascend) best = constrained;
+    try {
+      const constrained = await buildRouteForShape(ctx, shape, useLandmark, constrainedModel, blockArea);
+      if (constrained.ascend < best.ascend) best = constrained;
+    } catch { /* keep existing best */ }
   }
 
   const smoothed = smoothRoute(best.coordinates);
@@ -58,6 +81,57 @@ export async function buildRoute(ctx: BuildContext): Promise<BuiltRoute> {
   }
 
   return best;
+}
+
+async function correctDistance(
+  buildFn: (scaledTarget: number) => Promise<BuiltRoute>,
+  targetMeters: number,
+  maxIterations = 3,
+  tolerancePct = 0.10,
+): Promise<BuiltRoute> {
+  let best: BuiltRoute | null = null;
+  let scaledTarget = targetMeters;
+
+  for (let i = 0; i < maxIterations; i++) {
+    let result: BuiltRoute;
+    try {
+      result = await buildFn(scaledTarget);
+    } catch (err) {
+      if (!best) throw err;
+      break;
+    }
+    if (!best || Math.abs(result.distance - targetMeters) < Math.abs(best.distance - targetMeters)) {
+      best = result;
+    }
+    const errorPct = Math.abs(best.distance - targetMeters) / targetMeters;
+    if (errorPct <= tolerancePct) break;
+    if (result.distance <= 0) break;
+    scaledTarget = scaledTarget * (targetMeters / result.distance);
+  }
+
+  return best!;
+}
+
+async function checkLandmarkFeasibility(ctx: BuildContext) {
+  for (const name of ctx.params.location.landmarks) {
+    try {
+      const [geo] = await geocode(name, ctx.start);
+      if (!geo) continue;
+      const dist = haversineDistance(ctx.start, geo.coordinates);
+      const minFeasible = dist * 2 * 1.3;
+      if (minFeasible > ctx.targetMeters * 1.5) {
+        const distMiles = Math.round(metersToMiles(dist) * 10) / 10;
+        const suggestedMiles = Math.ceil(metersToMiles(minFeasible));
+        throw new RouteConstraintError({
+          reason: 'LANDMARK_TOO_FAR',
+          explanation: `${name} is about ${distMiles} miles from your starting point. A round trip needs at least ~${suggestedMiles} miles.`,
+          suggestedDistanceMiles: suggestedMiles,
+        });
+      }
+    } catch (err) {
+      if (err instanceof RouteConstraintError) throw err;
+    }
+  }
 }
 
 async function buildRouteForShape(
@@ -320,37 +394,51 @@ async function outAndBack(
   routingModel?: unknown,
   blockArea?: string
 ): Promise<BuiltRoute> {
-  let projectionDistance = ctx.targetMeters / 2;
+  const halfTarget = ctx.targetMeters / 2;
+  const bearings = [0, 90, 180, 270];
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const far = projectOut(ctx.start, projectionDistance);
+  let bestBearing = 0;
+  let bestDiff = Infinity;
+  for (const bearing of bearings) {
+    const far = projectBearing(ctx.start, bearing, halfTarget);
+    try {
+      const leg = await route([ctx.start, far], ctx.profile, { customModel: routingModel, blockArea });
+      const diff = Math.abs(leg.distance - halfTarget);
+      if (diff < bestDiff) { bestDiff = diff; bestBearing = bearing; }
+    } catch { /* skip unreachable bearings */ }
+  }
+
+  let projDist = halfTarget;
+  let best: BuiltRoute | null = null;
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const far = projectBearing(ctx.start, bestBearing, projDist);
     const outLeg = await route([ctx.start, far], ctx.profile, {
-      alternative: true,
-      customModel: routingModel,
-      blockArea,
+      alternative: true, customModel: routingModel, blockArea,
     });
     const backLeg = await route([far, ctx.start], ctx.profile, {
-      alternative: true,
-      customModel: routingModel,
-      blockArea,
+      alternative: true, customModel: routingModel, blockArea,
     });
-    const totalDistance = outLeg.distance + backLeg.distance;
+    const total = outLeg.distance + backLeg.distance;
 
-    if (attempt === 0 && totalDistance > ctx.targetMeters * 1.1) {
-      projectionDistance *= ctx.targetMeters / totalDistance;
-      continue;
-    }
-
-    return {
+    const candidate: BuiltRoute = {
       coordinates: [...outLeg.points, ...backLeg.points],
-      distance: totalDistance,
+      distance: total,
       time: outLeg.time + backLeg.time,
       ascend: (outLeg.ascend ?? 0) + (backLeg.ascend ?? 0),
     };
+
+    if (!best || Math.abs(candidate.distance - ctx.targetMeters) < Math.abs(best.distance - ctx.targetMeters)) {
+      best = candidate;
+    }
+    const errorPct = Math.abs(best.distance - ctx.targetMeters) / ctx.targetMeters;
+    if (errorPct <= 0.10) break;
+    if (total <= 0) break;
+    projDist = projDist * (ctx.targetMeters / total);
   }
 
-  // Unreachable, but satisfies return type.
-  throw new Error('out-and-back routing failed');
+  if (!best) throw new Error('out-and-back routing failed');
+  return best;
 }
 
 async function pointToPoint(
@@ -383,9 +471,20 @@ async function resolveEnd(ctx: BuildContext): Promise<[number, number] | null> {
   return null;
 }
 
-function projectOut(start: [number, number], distanceMeters: number): [number, number] {
-  const dLat = (distanceMeters / 6371e3) * (180 / Math.PI);
-  return [start[0], start[1] + dLat];
+function projectBearing(start: [number, number], bearingDeg: number, distanceMeters: number): [number, number] {
+  const R = 6371e3;
+  const brng = (bearingDeg * Math.PI) / 180;
+  const lat1 = (start[1] * Math.PI) / 180;
+  const lon1 = (start[0] * Math.PI) / 180;
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(distanceMeters / R) +
+    Math.cos(lat1) * Math.sin(distanceMeters / R) * Math.cos(brng)
+  );
+  const lon2 = lon1 + Math.atan2(
+    Math.sin(brng) * Math.sin(distanceMeters / R) * Math.cos(lat1),
+    Math.cos(distanceMeters / R) - Math.sin(lat1) * Math.sin(lat2)
+  );
+  return [(lon2 * 180) / Math.PI, (lat2 * 180) / Math.PI];
 }
 
 async function resolveAvoidBlockArea(

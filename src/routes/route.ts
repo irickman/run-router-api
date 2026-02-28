@@ -10,7 +10,7 @@ import { evaluateRoute } from '../services/routeEval';
 import { getRoute, saveRoute } from '../services/storage';
 import { metersToMiles, haversineDistance } from '../utils/geometry';
 import { toGPX } from '../utils/gpx';
-import { errorResponse, HttpError } from '../utils/httpErrors';
+import { errorResponse, HttpError, RouteConstraintError } from '../utils/httpErrors';
 import { logError, logInfo } from '../utils/logger';
 import { RouteParametersParsed } from '../utils/jsonSchema';
 
@@ -129,6 +129,16 @@ router.post('/route', async (req, res) => {
       gpxUrl: `/api/route/${sessionId}/${routeId}/gpx`,
     });
   } catch (err) {
+    if (err instanceof RouteConstraintError) {
+      logError('route constraint', { reason: err.reason, error: err.message });
+      return res.status(err.status).json({
+        error: err.message,
+        code: err.code,
+        reason: err.reason,
+        explanation: err.explanation,
+        suggestedDistanceMiles: err.suggestedDistanceMiles,
+      });
+    }
     if (err instanceof HttpError) {
       logError('route request failed', {
         code: err.code,

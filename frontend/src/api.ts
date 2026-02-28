@@ -5,6 +5,9 @@ const API_URL = import.meta.env.VITE_API_URL || 'https://route-runner-api.fly.de
 export interface ApiError {
   error: string;
   code?: string;
+  reason?: string;
+  explanation?: string;
+  suggestedDistanceMiles?: number;
 }
 
 export async function generateRoute(
