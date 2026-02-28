@@ -13,6 +13,19 @@ const OVERPASS_ENDPOINTS = [
 
 export type FeatureType = 'water' | 'park' | 'other';
 
+export interface OsmWayTags {
+  highway?: string;
+  surface?: string;
+  sidewalk?: string;
+  lit?: string;
+  [key: string]: string | undefined;
+}
+
+export interface OsmWay {
+  tags: OsmWayTags;
+  geometry: [number, number][]; // [lng, lat]
+}
+
 export interface OverpassPolygonResult {
   polygon: [number, number][]; // [lng, lat]
   trails: [number, number][][];
@@ -77,6 +90,47 @@ function detectFeatureType(el: OverpassElement): FeatureType | null {
   if (tags.boundary === 'national_park') return 'park';
   if (tags.landuse === 'recreation_ground') return 'park';
   return null;
+}
+
+export async function fetchWayTagsAlongRoute(
+  coords: [number, number][]
+): Promise<OsmWay[]> {
+  if (coords.length < 2) return [];
+
+  let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+  for (const [lng, lat] of coords) {
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+  }
+  const pad = 0.001;
+  const bboxStr = `${minLat - pad},${minLng - pad},${maxLat + pad},${maxLng + pad}`;
+
+  const query = `
+  [out:json][timeout:15];
+  way["highway"](${bboxStr});
+  out tags geom;
+  `;
+
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const res = await axios.post(endpoint, `data=${encodeURIComponent(query)}`, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        timeout: 15000,
+      });
+      const elements: OverpassElement[] = res.data?.elements ?? [];
+      return elements
+        .filter((el) => el.type === 'way' && el.tags?.highway && el.geometry)
+        .map((el) => ({
+          tags: el.tags as OsmWayTags,
+          geometry: el.geometry!.map((g) => [g.lon, g.lat] as [number, number]),
+        }));
+    } catch (err) {
+      logExternalError('overpass', err, { endpoint, purpose: 'way_tags' });
+    }
+  }
+  return [];
 }
 
 function parseOverpass(data: { elements?: OverpassElement[] }, featureName: string):

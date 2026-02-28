@@ -5,6 +5,7 @@ import { geocode, bboxFromProximity } from '../clients/mapboxClient';
 import { extractRouteParameters, refineRouteParameters } from '../services/nlp';
 import { defaultRouteName, generateRouteName } from '../services/routeNaming';
 import { buildRoute, refineSegment } from '../services/routeBuilder';
+import { scoreRoute } from '../services/runnabilityScoring';
 import { logRequest } from '../services/requestLogger';
 import { evaluateRoute } from '../services/routeEval';
 import { getRoute, saveRoute } from '../services/storage';
@@ -58,6 +59,7 @@ router.post('/route', async (req, res) => {
 
     const distanceMeters = routeResult.distance;
     const elevationGainFeet = routeResult.ascend * 3.28084;
+    const runnability = await scoreRoute(routeResult.coordinates).catch(() => null);
     const name =
       (await generateRouteName({
         query,
@@ -76,6 +78,7 @@ router.post('/route', async (req, res) => {
         distance_meters: distanceMeters,
         elevation_gain_feet: elevationGainFeet,
         duration_minutes: routeResult.time / 60000,
+        ...(runnability ? { runnability } : {}),
       },
       parameters: params,
       metadata: { shape: params.shape.type, landmarks: params.location.landmarks },
