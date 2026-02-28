@@ -2,6 +2,7 @@
   "distance_influence": 15,
   "priority": [
     { "if": "!foot_access", "multiply_by": "0" },
+    { "if": "toll != NO", "multiply_by": "0" },
     { "else": "", "multiply_by": "foot_priority" },
     { "if": "road_class == TRACK || road_class == FOOTWAY || road_class == PATH", "multiply_by": "1.8" },
     { "if": "surface == GRAVEL || surface == DIRT || surface == COMPACTED", "multiply_by": "1.5" },

@@ -11,10 +11,13 @@ const OVERPASS_ENDPOINTS = [
   'https://overpass.private.coffee/api/interpreter',
 ];
 
+export type FeatureType = 'water' | 'park' | 'other';
+
 export interface OverpassPolygonResult {
   polygon: [number, number][]; // [lng, lat]
   trails: [number, number][][];
   name: string;
+  featureType: FeatureType;
 }
 
 export async function fetchPerimeterAndTrails(
@@ -25,13 +28,20 @@ export async function fetchPerimeterAndTrails(
   const cached = cache.get(key);
   if (cached) return cached;
 
+  const bboxStr = `${bbox[1]},${bbox[0]},${bbox[3]},${bbox[2]}`;
   const query = `
   [out:json][timeout:30];
   (
-    way["name"="${name}"]["natural"="water"](${bbox[1]},${bbox[0]},${bbox[3]},${bbox[2]});
-    relation["name"="${name}"]["natural"="water"](${bbox[1]},${bbox[0]},${bbox[3]},${bbox[2]});
+    way["name"="${name}"]["natural"="water"](${bboxStr});
+    relation["name"="${name}"]["natural"="water"](${bboxStr});
+    way["name"="${name}"]["leisure"~"^(park|garden|nature_reserve)$"](${bboxStr});
+    relation["name"="${name}"]["leisure"~"^(park|garden|nature_reserve)$"](${bboxStr});
+    way["name"="${name}"]["boundary"="national_park"](${bboxStr});
+    relation["name"="${name}"]["boundary"="national_park"](${bboxStr});
+    way["name"="${name}"]["landuse"="recreation_ground"](${bboxStr});
+    relation["name"="${name}"]["landuse"="recreation_ground"](${bboxStr});
   )->.feature;
-  way(around.feature:50)["highway"~"^(footway|path|cycleway)$"]->.trails;
+  way(around.feature:50)["highway"~"^(footway|path|cycleway|track)$"]->.trails;
   .feature out body geom;
   .trails out body geom;
   `;
@@ -60,31 +70,45 @@ type OverpassElement = {
   members?: { role: string; geometry?: { lat: number; lon: number }[] }[];
 };
 
+function detectFeatureType(el: OverpassElement): FeatureType | null {
+  const tags = el.tags ?? {};
+  if (tags.natural === 'water') return 'water';
+  if (tags.leisure === 'park' || tags.leisure === 'garden' || tags.leisure === 'nature_reserve') return 'park';
+  if (tags.boundary === 'national_park') return 'park';
+  if (tags.landuse === 'recreation_ground') return 'park';
+  return null;
+}
+
 function parseOverpass(data: { elements?: OverpassElement[] }, featureName: string):
   | OverpassPolygonResult
   | null {
   if (!data?.elements) return null;
-  const polygons: [number, number][][] = [];
+  const polygons: { coords: [number, number][]; type: FeatureType }[] = [];
   const trails: [number, number][][] = [];
 
   for (const el of data.elements) {
     if (el.type === 'way' && el.geometry) {
       const coords = el.geometry.map((g) => [g.lon, g.lat] as [number, number]);
-      if (el.tags?.natural === 'water') polygons.push(coords);
+      const ft = detectFeatureType(el);
+      if (ft) polygons.push({ coords, type: ft });
       if (el.tags?.highway) trails.push(coords);
     }
     if (el.type === 'relation' && el.members) {
       const outer = el.members
         .filter((m) => m.role === 'outer' && m.geometry)
         .flatMap((m) => m.geometry!.map((g) => [g.lon, g.lat] as [number, number]));
-      if (outer.length) polygons.push(outer);
+      if (outer.length) {
+        const ft = detectFeatureType(el);
+        polygons.push({ coords: outer, type: ft ?? 'other' });
+      }
     }
   }
 
   if (!polygons.length) return null;
   return {
-    polygon: polygons[0],
+    polygon: polygons[0].coords,
     trails,
     name: featureName,
+    featureType: polygons[0].type,
   };
 }

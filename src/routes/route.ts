@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 
-import { geocode } from '../clients/mapboxClient';
+import { geocode, bboxFromProximity } from '../clients/mapboxClient';
 import { extractRouteParameters, refineRouteParameters } from '../services/nlp';
 import { defaultRouteName, generateRouteName } from '../services/routeNaming';
-import { buildRoute } from '../services/routeBuilder';
+import { buildRoute, refineSegment } from '../services/routeBuilder';
 import { logRequest } from '../services/requestLogger';
 import { evaluateRoute } from '../services/routeEval';
 import { getRoute, saveRoute } from '../services/storage';
@@ -41,8 +41,9 @@ router.post('/route', async (req, res) => {
 
     if (params.location.startPoint) {
       try {
-        const startGeo = await geocode(params.location.startPoint, start);
-        if (startGeo[0] && haversineDistance(start, startGeo[0].coordinates) < 100_000) start = startGeo[0].coordinates;
+        const bbox = bboxFromProximity(start);
+        const startGeo = await geocode(params.location.startPoint, start, bbox);
+        if (startGeo[0] && haversineDistance(start, startGeo[0].coordinates) < 40_234) start = startGeo[0].coordinates;
       } catch {
         // Keep incoming location as fallback if start geocoding fails.
       }
@@ -271,6 +272,106 @@ router.post('/route/:sessionId/:routeId/refine', async (req, res) => {
 
     const message = err instanceof Error ? err.message : 'Internal error';
     logError('route refinement failed', {
+      code: 'INTERNAL_ERROR',
+      status: 500,
+      error: message,
+    });
+    res.status(500).json({ error: message, code: 'INTERNAL_ERROR' });
+  }
+});
+
+router.post('/route/:sessionId/:routeId/refine-segment', async (req, res) => {
+  try {
+    const sourceRoute = getRoute(req.params.sessionId, req.params.routeId);
+    if (!sourceRoute) {
+      const missing = errorResponse(404, 'NOT_FOUND', 'Route not found');
+      return res.status(missing.status).json(missing.body);
+    }
+
+    const { instruction, segmentStart, segmentEnd } = req.body ?? {};
+    if (!instruction || typeof instruction !== 'string' || !instruction.trim()) {
+      const invalid = errorResponse(400, 'MISSING_FIELD', 'Missing required field: instruction');
+      return res.status(invalid.status).json(invalid.body);
+    }
+    if (
+      !Array.isArray(segmentStart) || segmentStart.length < 2 ||
+      !Array.isArray(segmentEnd) || segmentEnd.length < 2
+    ) {
+      const invalid = errorResponse(400, 'MISSING_FIELD', 'segmentStart and segmentEnd must be [lng, lat] coordinate arrays');
+      return res.status(invalid.status).json(invalid.body);
+    }
+
+    const profile = profileFromParams(sourceRoute.parameters as RouteParametersParsed);
+    const result = await refineSegment(
+      sourceRoute.geometry.coordinates,
+      segmentStart as [number, number],
+      segmentEnd as [number, number],
+      profile,
+      instruction.trim(),
+      (sourceRoute.stats.duration_minutes ?? 0) * 60_000,
+      sourceRoute.stats.distance_meters ?? 0,
+    );
+
+    const routeId = uuidv4();
+    const distanceMeters = result.distance;
+    const elevationGainFeet = result.ascend * 3.28084;
+
+    const routeData = {
+      sessionId: sourceRoute.sessionId,
+      routeId,
+      geometry: { type: 'LineString' as const, coordinates: result.coordinates },
+      stats: {
+        distance_miles: metersToMiles(distanceMeters),
+        distance_meters: distanceMeters,
+        elevation_gain_feet: elevationGainFeet,
+        duration_minutes: result.time / 60000,
+      },
+      parameters: sourceRoute.parameters,
+      metadata: {
+        shape: (sourceRoute.parameters as RouteParametersParsed).shape.type,
+        landmarks: (sourceRoute.parameters as RouteParametersParsed).location.landmarks,
+        parentRouteId: sourceRoute.routeId,
+      },
+      originalQuery: sourceRoute.originalQuery,
+      name: sourceRoute.name,
+      createdAt: new Date().toISOString(),
+    };
+
+    saveRoute(routeData);
+    logInfo('segment refined', {
+      sessionId: routeData.sessionId,
+      sourceRouteId: sourceRoute.routeId,
+      routeId,
+      instruction: instruction.trim(),
+      segmentStartIdx: result.segmentStartIdx,
+      segmentEndIdx: result.segmentEndIdx,
+    });
+
+    res.json({
+      sessionId: routeData.sessionId,
+      routeId: routeData.routeId,
+      name: routeData.name,
+      geometry: routeData.geometry,
+      stats: routeData.stats,
+      parameters: sourceRoute.parameters,
+      metadata: routeData.metadata,
+      originalQuery: routeData.originalQuery,
+      gpxUrl: `/api/route/${routeData.sessionId}/${routeData.routeId}/gpx`,
+      segmentStartIdx: result.segmentStartIdx,
+      segmentEndIdx: result.segmentEndIdx,
+    });
+  } catch (err) {
+    if (err instanceof HttpError) {
+      logError('segment refinement failed', {
+        code: err.code,
+        status: err.status,
+        error: err.message,
+      });
+      return res.status(err.status).json({ error: err.message, code: err.code });
+    }
+
+    const message = err instanceof Error ? err.message : 'Internal error';
+    logError('segment refinement failed', {
       code: 'INTERNAL_ERROR',
       status: 500,
       error: message,

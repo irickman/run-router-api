@@ -13,11 +13,25 @@ export interface GeocodeResult {
   context?: string;
 }
 
+const MILES_25_METERS = 40_234;
+
+export function bboxFromProximity(center: [number, number], radiusMeters = MILES_25_METERS): [number, number, number, number] {
+  const latDelta = radiusMeters / 111_320;
+  const lngDelta = radiusMeters / (111_320 * Math.cos((center[1] * Math.PI) / 180));
+  return [
+    center[0] - lngDelta,
+    center[1] - latDelta,
+    center[0] + lngDelta,
+    center[1] + latDelta,
+  ];
+}
+
 export async function geocode(
   query: string,
-  proximity?: [number, number]
+  proximity?: [number, number],
+  bbox?: [number, number, number, number]
 ): Promise<GeocodeResult[]> {
-  const key = `${query}-${proximity?.join(',') || ''}`;
+  const key = `${query}-${proximity?.join(',') || ''}-${bbox?.join(',') || ''}`;
   const cached = cache.get(key);
   if (cached) return cached;
 
@@ -28,6 +42,7 @@ export async function geocode(
     types: 'poi,place,neighborhood,locality,address',
   };
   if (proximity) params.proximity = `${proximity[0]},${proximity[1]}`;
+  if (bbox) params.bbox = bbox.join(',');
 
   try {
     const res = await axios.get(url, { params, timeout: 10000 });
@@ -45,10 +60,17 @@ export async function geocode(
       context: f.context?.map((c) => c.text).join(', '),
     }));
 
+    // Fallback: if bbox-constrained search returns nothing, retry without bbox.
+    // Do NOT cache the empty result — a proximity-only retry may succeed and
+    // we want future callers with the same bbox key to retry as well.
+    if (results.length === 0 && bbox && proximity) {
+      return geocode(query, proximity);
+    }
+
     cache.set(key, results);
     return results;
   } catch (err) {
-    logExternalError('mapbox', err, { query, proximity });
+    logExternalError('mapbox', err, { query, proximity, bbox });
     throw err;
   }
 }

@@ -67,6 +67,29 @@ export async function refineRoute(
   return data;
 }
 
+export async function refineSegment(
+  sessionId: string,
+  routeId: string,
+  instruction: string,
+  segmentStart: [number, number],
+  segmentEnd: [number, number]
+): Promise<RouteResponse & { segmentStartIdx?: number; segmentEndIdx?: number }> {
+  const res = await fetch(`${API_URL}/api/route/${sessionId}/${routeId}/refine-segment`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instruction, segmentStart, segmentEnd }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: ApiError = {
+      error: data.error || `Request failed: ${res.status}`,
+      code: data.code,
+    };
+    throw err;
+  }
+  return data;
+}
+
 export function getGpxUrl(sessionId: string, routeId: string): string {
   return `${API_URL}/api/route/${sessionId}/${routeId}/gpx`;
 }
