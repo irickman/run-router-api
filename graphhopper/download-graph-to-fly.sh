@@ -3,7 +3,7 @@ set -euo pipefail
 
 PROJECT="gen-lang-client-0851822254"
 BUCKET="gs://${PROJECT}-gh-graph"
-FLY_APP="route-runner-graphhopper"
+FLY_APP="route-runner-graphhopper-v2"
 
 echo "=== Download graph-cache from GCS to Fly volume ==="
 
