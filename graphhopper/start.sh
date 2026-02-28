@@ -9,11 +9,16 @@ if [ ! -f "$PBF_FILE" ]; then
   wget -O "$PBF_FILE" https://download.geofabrik.de/north-america/us-latest.osm.pbf
 fi
 
-if [ -d "$GRAPH_DIR" ] && [ -f "$GRAPH_DIR/location_index" ] && [ -f "$GRAPH_DIR/nodes" ] && ls "$GRAPH_DIR"/landmarks_* 1>/dev/null 2>&1; then
-  echo "Complete graph cache found — skipping import, loading directly."
-elif [ -d "$GRAPH_DIR" ]; then
-  echo "Incomplete graph cache detected, cleaning up..."
-  rm -rf "$GRAPH_DIR"
+VERSION_FILE="$GRAPH_DIR/.graph_version"
+if [ -d "$GRAPH_DIR" ] && [ -f "$VERSION_FILE" ] && [ "$(cat "$VERSION_FILE")" = "$GRAPH_VERSION" ] && [ -f "$GRAPH_DIR/location_index" ] && [ -f "$GRAPH_DIR/nodes" ] && ls "$GRAPH_DIR"/landmarks_* 1>/dev/null 2>&1; then
+  echo "Complete graph cache found (v$GRAPH_VERSION) — skipping import, loading directly."
+else
+  if [ -d "$GRAPH_DIR" ]; then
+    echo "Graph cache missing or outdated (expected v$GRAPH_VERSION), cleaning up..."
+    rm -rf "$GRAPH_DIR"
+  fi
+  mkdir -p "$GRAPH_DIR"
+  echo "$GRAPH_VERSION" > "$VERSION_FILE"
 fi
 
 if [ ! -d "$SRTM_CACHE" ] || [ "$(ls "$SRTM_CACHE"/*.hgt.zip 2>/dev/null | wc -l)" -lt 1000 ]; then

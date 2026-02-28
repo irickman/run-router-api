@@ -5,13 +5,15 @@ graphhopper:
   profiles:
     - name: foot
       custom_model_files: [foot_cm.json]
+      turn_costs: true
     - name: trail
       custom_model_files: [trail_runner_cm.json]
+      turn_costs: true
   profiles_ch: []
   profiles_lm:
     - profile: foot
     - profile: trail
-  graph.encoded_values: foot_access,foot_average_speed,foot_priority,road_class,road_environment,surface,average_slope
+  graph.encoded_values: foot_access,foot_average_speed,foot_priority,road_class,road_environment,surface,average_slope,toll,max_turn_costs
   graph.elevation.provider: srtm
   graph.elevation.cache_dir: /data/srtm-cache
   import.osm.ignored_highways: motorway,trunk
