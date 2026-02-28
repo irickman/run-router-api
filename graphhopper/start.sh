@@ -10,7 +10,7 @@ if [ ! -f "$PBF_FILE" ]; then
 fi
 
 VERSION_FILE="$GRAPH_DIR/.graph_version"
-GCS_GRAPH_URL="https://storage.googleapis.com/gen-lang-client-0851822254-gh-graph/graph-cache.tar.gz"
+GCS_GRAPH_URL="${GCS_GRAPH_URL:-https://storage.googleapis.com/${GCP_PROJECT_ID}-gh-graph/graph-cache.tar.gz}"
 
 if [ -d "$GRAPH_DIR" ] && [ -f "$GRAPH_DIR/location_index" ] && [ -f "$GRAPH_DIR/nodes" ] && ls "$GRAPH_DIR"/landmarks_* 1>/dev/null 2>&1; then
   echo "Complete graph cache found — skipping import, loading directly."

@@ -5,8 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 
-const spreadsheetId =
-  process.env.EVAL_SPREADSHEET_ID || '11FEC2-FvDR-xuRHUNMXFYiJnGiAqZ7fSNGmUlL5kpwA';
+const spreadsheetId = process.env.EVAL_SPREADSHEET_ID;
+if (!spreadsheetId) throw new Error('EVAL_SPREADSHEET_ID env var is required');
 const authFile = process.env.EVAL_GOOGLE_AUTH_FILE || process.env.GOOGLE_APPLICATION_CREDENTIALS || 'google-auth.json';
 const runnerVersion = 'sheet-evals-v1';
 

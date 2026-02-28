@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-PROJECT="gen-lang-client-0851822254"
+PROJECT="${GCP_PROJECT_ID:?Set GCP_PROJECT_ID in .env}"
 ZONE="us-west1-b"
 INSTANCE="gh-builder"
 MACHINE_TYPE="n2-highmem-16"  # 16 CPUs, 128GB RAM (~$1.10/hr)

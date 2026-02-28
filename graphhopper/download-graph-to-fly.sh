@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-PROJECT="gen-lang-client-0851822254"
+PROJECT="${GCP_PROJECT_ID:?Set GCP_PROJECT_ID in .env}"
 BUCKET="gs://${PROJECT}-gh-graph"
 FLY_APP="route-runner-graphhopper"
 

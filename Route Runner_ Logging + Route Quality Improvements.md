@@ -2,7 +2,7 @@
 ## 1. Request Logging to Google Sheets
 **Goal:** Log every `POST /api/route` and `POST /api/route/.../refine` request to a Google Sheet.
 **Auth:** `google-auth.json` service account (already in project, used by evals).
-**Sheet ID:** `11FEC2-FvDR-xuRHUNMXFYiJnGiAqZ7fSNGmUlL5kpwA` (same spreadsheet as evals, different tab).
+**Sheet ID:** Set via `EVAL_SPREADSHEET_ID` env var (same spreadsheet as evals, different tab).
 ### Changes
 * **New file `src/services/requestLogger.ts`** — Reusable Sheets append client. Buffers rows in memory and flushes every N seconds (or N rows) to avoid one API call per request. Uses `google-auth-library` JWT (already a dependency). Columns: `timestamp`, `request_id`, `endpoint`, `query`, `location_lat`, `location_lng`, `shape`, `distance_value`, `distance_unit`, `landmarks`, `route_id`, `distance_meters_actual`, `elevation_gain_ft`, `duration_ms`, `error`, `provider` (which NLP succeeded).
 * **`src/routes/route.ts`** — After successful response (or on error), call `requestLogger.log(...)` fire-and-forget. No `await` — logging failures must not affect the API response.
