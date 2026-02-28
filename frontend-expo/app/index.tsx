@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { View, Text } from 'react-native';
+import MapView, { Marker, MapPressEvent } from 'react-native-maps';
 import { useGeolocation } from '../src/hooks/useGeolocation';
 import { generateRoute, refineRoute } from '../src/api';
 import type { ApiError } from '../src/api';
@@ -13,6 +14,7 @@ import { RouteActions } from '../src/components/RouteActions';
 import { LoadingOverlay } from '../src/components/LoadingOverlay';
 import { ErrorDisplay } from '../src/components/ErrorDisplay';
 import { Sidebar } from '../src/components/Sidebar';
+import { LocationPicker } from '../src/components/LocationPicker';
 
 export default function HomePage() {
   const [query, setQuery] = useState('');
@@ -22,7 +24,14 @@ export default function HomePage() {
   const [refining, setRefining] = useState(false);
   const [refineError, setRefineError] = useState<string | null>(null);
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const { location, loading: locationLoading, isFallback, showLocationSettingsMessage } = useGeolocation();
+  const { location: geoLocation, loading: locationLoading, showLocationSettingsMessage } = useGeolocation();
+  const [startLocation, setStartLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const location = startLocation ?? geoLocation;
+
+  const handleMapPress = useCallback((e: MapPressEvent) => {
+    const { latitude, longitude } = e.nativeEvent.coordinate;
+    setStartLocation({ lat: latitude, lng: longitude });
+  }, []);
 
   const handleSubmit = async () => {
     if (!query.trim()) return;
@@ -71,17 +80,15 @@ export default function HomePage() {
   };
 
   const inputContent = (
-    <View className="gap-4">
-      <Text className="text-sm text-gray-600">
-        {locationLoading
-          ? 'Detecting location...'
-          : isFallback
-            ? 'Starting from Seattle (default)'
-            : 'Starting from your location'}
-      </Text>
+    <View className="gap-3">
+      <LocationPicker
+        location={location}
+        onLocationChange={setStartLocation}
+        loading={locationLoading}
+      />
       {showLocationSettingsMessage && (
-        <Text className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3">
-          Enable location access in Settings to use your current position.
+        <Text style={{ color: '#fbbf24', fontSize: 12, backgroundColor: 'rgba(245,158,11,0.15)', borderRadius: 8, padding: 10 }}>
+          Enable location in Settings for your current position.
         </Text>
       )}
       <RouteInput
@@ -100,20 +107,20 @@ export default function HomePage() {
       <RouteMetadata name={route.name} />
       {route.originalQuery && (
         <View className="gap-1">
-          <Text className="text-xs uppercase tracking-wide text-gray-500">Original request</Text>
-          <Text className="text-sm text-gray-700">{route.originalQuery}</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>Original request</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>{route.originalQuery}</Text>
         </View>
       )}
       {refinementHistory.length > 0 && (
         <View className="gap-1">
-          <Text className="text-xs uppercase tracking-wide text-gray-500">Refinements</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>Refinements</Text>
           {refinementHistory.map((item, index) => (
-            <Text key={`${item}-${index}`} className="text-sm text-gray-700">• {item}</Text>
+            <Text key={`${item}-${index}`} style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>• {item}</Text>
           ))}
         </View>
       )}
       <RouteRefineInput loading={refining} onRefine={handleRefine} />
-      {refineError && <Text className="text-sm text-red-600">{refineError}</Text>}
+      {refineError && <Text style={{ color: '#fca5a5', fontSize: 13 }}>{refineError}</Text>}
       <RouteActions
         sessionId={route.sessionId}
         routeId={route.routeId}
@@ -128,9 +135,25 @@ export default function HomePage() {
       {route ? (
         <RouteMap geometry={route.geometry} fitBounds />
       ) : (
-        <View className="flex-1 bg-gray-200 items-center justify-center">
-          <Text className="text-gray-500">Enter a route description and tap Generate</Text>
-        </View>
+        <MapView
+          style={{ flex: 1 }}
+          region={{
+            latitude: location.lat,
+            longitude: location.lng,
+            latitudeDelta: 0.04,
+            longitudeDelta: 0.04,
+          }}
+          showsUserLocation
+          onPress={handleMapPress}
+        >
+          {startLocation && (
+            <Marker coordinate={{ latitude: startLocation.lat, longitude: startLocation.lng }}>
+              <View style={{ width: 28, height: 28, backgroundColor: '#06b6d4', borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}>
+                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 12 }}>S</Text>
+              </View>
+            </Marker>
+          )}
+        </MapView>
       )}
       <Sidebar
         inputContent={inputContent}

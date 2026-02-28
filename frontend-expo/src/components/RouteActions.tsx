@@ -60,22 +60,24 @@ export function RouteActions({ sessionId, routeId, onTryAnother }: RouteActionsP
       <TouchableOpacity
         onPress={handleGpxDownload}
         disabled={gpxLoading}
-        className="px-4 py-2 border border-gray-300 rounded-lg"
-        style={{ opacity: gpxLoading ? 0.5 : 1 }}
+        className="px-4 py-2.5 rounded-lg"
+        style={{ borderWidth: 1, borderColor: 'rgba(6,182,212,0.3)', opacity: gpxLoading ? 0.5 : 1 }}
       >
-        <Text className="font-medium text-gray-700">{gpxLoading ? 'Downloading...' : 'Download GPX'}</Text>
+        <Text style={{ color: '#06b6d4', fontWeight: '600' }}>{gpxLoading ? 'Downloading...' : 'Download GPX'}</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={handleShare}
-        className="px-4 py-2 border border-gray-300 rounded-lg"
+        className="px-4 py-2.5 rounded-lg"
+        style={{ borderWidth: 1, borderColor: 'rgba(6,182,212,0.3)' }}
       >
-        <Text className="font-medium text-gray-700">Share</Text>
+        <Text style={{ color: '#06b6d4', fontWeight: '600' }}>Share</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onTryAnother}
-        className="px-4 py-2 border border-gray-300 rounded-lg"
+        className="px-4 py-2.5 rounded-lg"
+        style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
       >
-        <Text className="font-medium text-gray-700">Try Another</Text>
+        <Text style={{ color: '#fff', fontWeight: '600' }}>New Route</Text>
       </TouchableOpacity>
     </View>
   );

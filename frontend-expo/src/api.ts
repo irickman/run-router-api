@@ -5,6 +5,9 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://route-runner-api.fly
 export interface ApiError {
   error: string;
   code?: string;
+  reason?: string;
+  explanation?: string;
+  suggestedDistanceMiles?: number;
 }
 
 export async function generateRoute(

@@ -26,30 +26,31 @@ export function RouteRefineInput({ loading, onRefine }: RouteRefineInputProps) {
 
   return (
     <View className="gap-2">
-      <Text className="text-sm text-gray-600">Refine this route</Text>
+      <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Refine this route</Text>
       <BottomSheetTextInput
         value={instruction}
         onChangeText={(text) => setInstruction(text.slice(0, MAX_CHARS))}
         placeholder="Describe changes..."
-        placeholderTextColor="#9ca3af"
+        placeholderTextColor="rgba(255,255,255,0.35)"
         editable={!loading}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+        className="w-full px-3 py-2 rounded-lg text-white"
+        style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' }}
       />
       <View className="flex-row items-center justify-between">
-        <Text className="text-xs text-gray-500">{instruction.length}/{MAX_CHARS}</Text>
+        <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>{instruction.length}/{MAX_CHARS}</Text>
         <TouchableOpacity
           onPress={handleRefine}
           disabled={!instruction.trim() || loading}
-          className="px-4 py-2 bg-blue-600 rounded-lg flex-row items-center gap-2"
-          style={{ opacity: !instruction.trim() || loading ? 0.5 : 1 }}
+          className="px-4 py-2 rounded-lg flex-row items-center gap-2"
+          style={{ backgroundColor: '#06b6d4', opacity: !instruction.trim() || loading ? 0.4 : 1 }}
         >
           {loading ? (
             <>
               <ActivityIndicator size="small" color="#fff" />
-              <Text className="text-white font-medium">Refining...</Text>
+              <Text className="text-white font-semibold">Refining...</Text>
             </>
           ) : (
-            <Text className="text-white font-medium">Refine</Text>
+            <Text className="text-white font-semibold">Refine</Text>
           )}
         </TouchableOpacity>
       </View>

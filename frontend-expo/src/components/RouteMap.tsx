@@ -49,13 +49,13 @@ export function RouteMap({ geometry }: RouteMapProps) {
 
   return (
     <MapView style={{ flex: 1 }} initialRegion={initialRegion} accessibilityLabel="Route map">
-      <Polyline coordinates={coords} strokeColor="#2E75B6" strokeWidth={4} />
+      <Polyline coordinates={coords} strokeColor="#06b6d4" strokeWidth={4} />
       <Marker coordinate={start}>
         <View
           style={{
             width: 28,
             height: 28,
-            backgroundColor: '#22c55e',
+          backgroundColor: '#06b6d4',
             borderRadius: 14,
             alignItems: 'center',
             justifyContent: 'center',

@@ -5,17 +5,24 @@ interface StatsPanelProps {
   stats: RouteStats;
 }
 
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <View className="flex-1 min-w-[45%] rounded-xl p-3" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
+      <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>{label}</Text>
+      <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700', marginTop: 2 }}>{value}</Text>
+    </View>
+  );
+}
+
 export function StatsPanel({ stats }: StatsPanelProps) {
+  const paceMinPerMile = 10;
+  const estimatedMinutes = Math.round(stats.distance_miles * paceMinPerMile);
+
   return (
     <View className="flex-row flex-wrap gap-3">
-      <View className="flex-1 min-w-[45%] rounded-lg bg-gray-50 p-3">
-        <Text className="text-xs text-gray-500 uppercase tracking-wide">Distance</Text>
-        <Text className="text-lg font-semibold">{stats.distance_miles.toFixed(2)} mi</Text>
-      </View>
-      <View className="flex-1 min-w-[45%] rounded-lg bg-gray-50 p-3">
-        <Text className="text-xs text-gray-500 uppercase tracking-wide">Elevation</Text>
-        <Text className="text-lg font-semibold">{Math.round(stats.elevation_gain_feet)} ft</Text>
-      </View>
+      <StatCard label="Distance" value={`${stats.distance_miles.toFixed(2)} mi`} />
+      <StatCard label="Elevation" value={`${Math.round(stats.elevation_gain_feet)} ft`} />
+      <StatCard label="Est. Time" value={`~${estimatedMinutes} min`} />
     </View>
   );
 }

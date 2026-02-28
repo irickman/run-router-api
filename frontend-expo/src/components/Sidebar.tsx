@@ -1,5 +1,5 @@
 import { useRef, useMemo } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 
@@ -9,10 +9,12 @@ interface SidebarProps {
   hasRoute: boolean;
 }
 
+const DARK_BG = '#0f172a';
+
 export function Sidebar({ inputContent, statsContent, hasRoute }: SidebarProps) {
   const { top, bottom } = useSafeAreaInsets();
   const bottomSheetRef = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => ['32%', '75%'], []);
+  const snapPoints = useMemo(() => ['35%', '80%'], []);
 
   if (hasRoute) {
     return (
@@ -23,8 +25,8 @@ export function Sidebar({ inputContent, statsContent, hasRoute }: SidebarProps) 
         keyboardBehavior="interactive"
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
-        backgroundStyle={{ backgroundColor: 'white' }}
-        handleIndicatorStyle={{ backgroundColor: '#d1d5db' }}
+        backgroundStyle={{ backgroundColor: DARK_BG }}
+        handleIndicatorStyle={{ backgroundColor: 'rgba(6,182,212,0.5)', width: 40 }}
       >
         <BottomSheetScrollView
           keyboardShouldPersistTaps="handled"
@@ -38,13 +40,17 @@ export function Sidebar({ inputContent, statsContent, hasRoute }: SidebarProps) 
 
   return (
     <View
-      style={{ top: top + 12, left: 12, right: 12, position: 'absolute', zIndex: 40 }}
-      className="bg-white rounded-xl shadow-lg overflow-hidden"
+      style={{
+        top: top + 12, left: 12, right: 12, position: 'absolute', zIndex: 40,
+        backgroundColor: DARK_BG,
+        borderRadius: 16,
+        shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16,
+      }}
     >
-      <View className="px-4 py-3 border-b border-gray-100">
-        <Text className="font-medium">Describe your route</Text>
+      <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 }}>
+        <Text style={{ color: '#06b6d4', fontWeight: '700', fontSize: 15, letterSpacing: 1 }}>ROUTE RUNNER</Text>
       </View>
-      <View className="px-4 py-4">
+      <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
         {inputContent}
       </View>
     </View>

@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 
 const PLACEHOLDERS = [
-  '10k loop from Green Lake with minimal elevation gain',
-  'Half marathon through Discovery Park and along the water',
+  '10k loop from Green Lake with minimal elevation',
+  'Half marathon through Discovery Park',
   'Easy 5 mile run around Capitol Hill',
-  'Trail run starting from Seward Park, hilly terrain preferred',
+  'Trail run from Seward Park, hilly preferred',
 ];
 
 const MAX_CHARS = 500;
@@ -34,29 +34,36 @@ export function RouteInput({ value, onChange, onSubmit, disabled, loading }: Rou
         value={value}
         onChangeText={(text) => onChange(text.slice(0, MAX_CHARS))}
         placeholder={PLACEHOLDERS[placeholderIdx]}
-        placeholderTextColor="#9ca3af"
+        placeholderTextColor="rgba(255,255,255,0.35)"
         multiline
         numberOfLines={3}
         editable={!disabled}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
-        style={{ minHeight: 72, textAlignVertical: 'top' }}
+        className="w-full px-3 py-2.5 rounded-lg text-white"
+        style={{
+          minHeight: 72, textAlignVertical: 'top',
+          backgroundColor: 'rgba(255,255,255,0.08)',
+          borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+        }}
         accessibilityLabel="Describe your route"
       />
       <View className="flex-row items-center justify-between">
-        <Text className="text-xs text-gray-500">{value.length}/{MAX_CHARS}</Text>
+        <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>{value.length}/{MAX_CHARS}</Text>
         <TouchableOpacity
           onPress={onSubmit}
           disabled={!value.trim() || loading || disabled}
-          className="px-4 py-2 bg-blue-600 rounded-lg flex-row items-center gap-2 disabled:bg-gray-300"
-          style={{ opacity: (!value.trim() || loading || disabled) ? 0.5 : 1 }}
+          className="px-5 py-2.5 rounded-lg flex-row items-center gap-2"
+          style={{
+            backgroundColor: '#06b6d4',
+            opacity: (!value.trim() || loading || disabled) ? 0.4 : 1,
+          }}
         >
           {loading ? (
             <>
               <ActivityIndicator size="small" color="#fff" />
-              <Text className="text-white font-medium">Generating...</Text>
+              <Text className="text-white font-semibold">Generating...</Text>
             </>
           ) : (
-            <Text className="text-white font-medium">Generate Route</Text>
+            <Text className="text-white font-semibold">Generate Route</Text>
           )}
         </TouchableOpacity>
       </View>

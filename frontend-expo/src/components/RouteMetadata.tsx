@@ -6,11 +6,8 @@ interface RouteMetadataProps {
 
 export function RouteMetadata({ name }: RouteMetadataProps) {
   return (
-    <View className="gap-2">
-      <View>
-        <Text className="text-sm text-gray-500">Route name</Text>
-        <Text className="font-medium">{name}</Text>
-      </View>
+    <View>
+      <Text style={{ color: '#06b6d4', fontSize: 18, fontWeight: '700' }}>{name}</Text>
     </View>
   );
 }
