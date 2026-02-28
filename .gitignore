@@ -5,6 +5,7 @@ node_modules
 dist
 gh-data
 tmp-schema.ts
+.DS_Store
 
 # iOS build artifacts (Capacitor)
 frontend/ios/App/App/public
@@ -15,3 +16,12 @@ frontend/ios/DerivedData
 
 # Google service account key (local only)
 google-auth.json
+
+# Agent/operational docs
+AGENT-HANDOFF.md
+obsidian-notes/
+
+# Data files
+scripts/
+*.pbf
+*.ndjson
