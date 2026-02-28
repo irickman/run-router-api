@@ -60,9 +60,10 @@ export async function geocode(
       context: f.context?.map((c) => c.text).join(', '),
     }));
 
-    // Fallback: if bbox-constrained search returns nothing, retry without bbox
+    // Fallback: if bbox-constrained search returns nothing, retry without bbox.
+    // Do NOT cache the empty result — a proximity-only retry may succeed and
+    // we want future callers with the same bbox key to retry as well.
     if (results.length === 0 && bbox && proximity) {
-      cache.set(key, results);
       return geocode(query, proximity);
     }
 

@@ -308,6 +308,8 @@ router.post('/route/:sessionId/:routeId/refine-segment', async (req, res) => {
       segmentEnd as [number, number],
       profile,
       instruction.trim(),
+      (sourceRoute.stats.duration_minutes ?? 0) * 60_000,
+      sourceRoute.stats.distance_meters ?? 0,
     );
 
     const routeId = uuidv4();

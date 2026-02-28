@@ -549,6 +549,8 @@ export async function refineSegment(
   segmentEnd: [number, number],
   profile: Profile,
   instruction: string,
+  originalTime: number,
+  originalDistance: number,
 ): Promise<SegmentRefineResult> {
   const startIdx = closestCoordIndex(originalCoords, segmentStart);
   let endIdx = closestCoordIndex(originalCoords, segmentEnd);
@@ -557,21 +559,52 @@ export async function refineSegment(
   const segStart: [number, number] = [originalCoords[startIdx][0], originalCoords[startIdx][1]];
   const segEnd: [number, number] = [originalCoords[endIdx][0], originalCoords[endIdx][1]];
 
-  const newLeg = await route([segStart, segEnd], profile, { alternative: true });
+  // Try to use the instruction to geocode a waypoint near the segment.
+  // If found, route through it so the instruction actually influences the reroute.
+  const routePoints: [number, number][] = [segStart];
+  const midpoint: [number, number] = [
+    (segStart[0] + segEnd[0]) / 2,
+    (segStart[1] + segEnd[1]) / 2,
+  ];
+  try {
+    const bbox = bboxFromProximity(midpoint);
+    const [geo] = await geocode(instruction, midpoint, bbox);
+    if (geo && haversineDistance(midpoint, geo.coordinates) < MILES_25_METERS) {
+      routePoints.push(geo.coordinates);
+    }
+  } catch {
+    // Instruction didn't resolve to a location — fall back to direct reroute.
+  }
+  routePoints.push(segEnd);
+
+  const newLeg = await route(routePoints, profile, { alternative: true });
 
   const before = originalCoords.slice(0, startIdx);
   const after = originalCoords.slice(endIdx + 1);
   const merged: [number, number, number?][] = [...before, ...newLeg.points, ...after];
 
+  // Compute distance of the replaced segment from the original geometry so we
+  // can pro-rate the preserved portions' time from the original route.
+  let replacedDist = 0;
+  for (let i = startIdx; i < endIdx; i++) {
+    replacedDist += haversineDistance(
+      [originalCoords[i][0], originalCoords[i][1]],
+      [originalCoords[i + 1][0], originalCoords[i + 1][1]]
+    );
+  }
+  const preservedFraction = originalDistance > 0
+    ? Math.max(0, 1 - replacedDist / originalDistance)
+    : 0;
+  const preservedTime = originalTime * preservedFraction;
+
   let totalDist = 0;
-  let totalTime = 0;
   for (let i = 0; i < merged.length - 1; i++) {
     totalDist += haversineDistance(
       [merged[i][0], merged[i][1]],
       [merged[i + 1][0], merged[i + 1][1]]
     );
   }
-  totalTime = newLeg.time;
+  const totalTime = preservedTime + newLeg.time;
 
   return {
     coordinates: merged,
