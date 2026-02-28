@@ -1,6 +1,6 @@
 /* eslint-disable import/order */
 import { Profile, route } from '../clients/graphhopperClient';
-import { geocode } from '../clients/mapboxClient';
+import { geocode, bboxFromProximity } from '../clients/mapboxClient';
 import { RouteParametersParsed } from '../utils/jsonSchema';
 import { bboxFromPoint } from '../utils/bbox';
 import { fallbackPerimeter, perimeterWaypoints } from './perimeter';
@@ -112,10 +112,13 @@ async function correctDistance(
   return best!;
 }
 
+const MILES_25_METERS = 40_234;
+
 async function checkLandmarkFeasibility(ctx: BuildContext) {
+  const bbox = bboxFromProximity(ctx.start);
   for (const name of ctx.params.location.landmarks) {
     try {
-      const [geo] = await geocode(name, ctx.start);
+      const [geo] = await geocode(name, ctx.start, bbox);
       if (!geo) continue;
       const dist = haversineDistance(ctx.start, geo.coordinates);
       const minFeasible = dist * 2 * 1.3;
@@ -168,11 +171,12 @@ async function landmarkRoute(
   routingModel?: unknown,
   blockArea?: string
 ): Promise<BuiltRoute> {
+  const bbox = bboxFromProximity(ctx.start);
   const geocoded: [number, number][] = [];
   for (const name of ctx.params.location.landmarks) {
     try {
-      const [geo] = await geocode(name, ctx.start);
-      if (geo && haversineDistance(ctx.start, geo.coordinates) < 100_000) geocoded.push(geo.coordinates);
+      const [geo] = await geocode(name, ctx.start, bbox);
+      if (geo && haversineDistance(ctx.start, geo.coordinates) < MILES_25_METERS) geocoded.push(geo.coordinates);
     } catch {
       // Landmark geocoding failures are non-blocking; perimeter fallback handles route continuity.
     }
@@ -182,11 +186,11 @@ async function landmarkRoute(
   if (!waypointSet.length) {
     waypointSet = fallbackPerimeter(ctx.start, ctx.targetMeters);
   } else {
-    const bbox = bboxFromPoint(ctx.start);
-    const perimeter = await perimeterWaypoints(ctx.params.location.landmarks[0], bbox);
-    if (perimeter.length) {
+    const perimeterBbox = bboxFromPoint(ctx.start);
+    const perimeterResult = await perimeterWaypoints(ctx.params.location.landmarks[0], perimeterBbox);
+    if (perimeterResult.waypoints.length) {
       const maxPerimeter = Math.max(2, Math.ceil(ctx.targetMeters / 500));
-      const capped = perimeter.slice(0, Math.min(perimeter.length, maxPerimeter));
+      const capped = perimeterResult.waypoints.slice(0, Math.min(perimeterResult.waypoints.length, maxPerimeter));
       waypointSet.push(...capped);
     }
   }
@@ -462,8 +466,9 @@ async function resolveEnd(ctx: BuildContext): Promise<[number, number] | null> {
   const name = ctx.params.location.endPoint || ctx.params.location.landmarks[0];
   if (name) {
     try {
-      const [geo] = await geocode(name, ctx.start);
-      if (geo && haversineDistance(ctx.start, geo.coordinates) < 100_000) return geo.coordinates;
+      const bbox = bboxFromProximity(ctx.start);
+      const [geo] = await geocode(name, ctx.start, bbox);
+      if (geo && haversineDistance(ctx.start, geo.coordinates) < MILES_25_METERS) return geo.coordinates;
     } catch {
       // Start location fallback is intentional for point-to-point geocoding misses.
     }
@@ -494,12 +499,13 @@ async function resolveAvoidBlockArea(
   const avoid = (avoidStreets ?? []).map((s) => s.trim()).filter(Boolean).slice(0, 4);
   if (!avoid.length) return undefined;
 
+  const bbox = bboxFromProximity(start);
   const circles: string[] = [];
   for (const street of avoid) {
     try {
-      const [geo] = await geocode(street, start);
+      const [geo] = await geocode(street, start, bbox);
       if (!geo) continue;
-      if (haversineDistance(start, geo.coordinates) > 100_000) continue;
+      if (haversineDistance(start, geo.coordinates) > MILES_25_METERS) continue;
       const [lng, lat] = geo.coordinates;
       circles.push(`${lat},${lng},120`);
     } catch {
@@ -508,6 +514,73 @@ async function resolveAvoidBlockArea(
   }
 
   return circles.length ? circles.join(';') : undefined;
+}
+
+function closestCoordIndex(
+  coords: [number, number, number?][],
+  target: [number, number]
+): number {
+  let bestIdx = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < coords.length; i++) {
+    const dx = coords[i][0] - target[0];
+    const dy = coords[i][1] - target[1];
+    const dist = dx * dx + dy * dy;
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+export interface SegmentRefineResult {
+  coordinates: [number, number, number?][];
+  distance: number;
+  time: number;
+  ascend: number;
+  segmentStartIdx: number;
+  segmentEndIdx: number;
+}
+
+export async function refineSegment(
+  originalCoords: [number, number, number?][],
+  segmentStart: [number, number],
+  segmentEnd: [number, number],
+  profile: Profile,
+  instruction: string,
+): Promise<SegmentRefineResult> {
+  const startIdx = closestCoordIndex(originalCoords, segmentStart);
+  let endIdx = closestCoordIndex(originalCoords, segmentEnd);
+  if (endIdx <= startIdx) endIdx = Math.min(startIdx + 10, originalCoords.length - 1);
+
+  const segStart: [number, number] = [originalCoords[startIdx][0], originalCoords[startIdx][1]];
+  const segEnd: [number, number] = [originalCoords[endIdx][0], originalCoords[endIdx][1]];
+
+  const newLeg = await route([segStart, segEnd], profile, { alternative: true });
+
+  const before = originalCoords.slice(0, startIdx);
+  const after = originalCoords.slice(endIdx + 1);
+  const merged: [number, number, number?][] = [...before, ...newLeg.points, ...after];
+
+  let totalDist = 0;
+  let totalTime = 0;
+  for (let i = 0; i < merged.length - 1; i++) {
+    totalDist += haversineDistance(
+      [merged[i][0], merged[i][1]],
+      [merged[i + 1][0], merged[i + 1][1]]
+    );
+  }
+  totalTime = newLeg.time;
+
+  return {
+    coordinates: merged,
+    distance: totalDist,
+    time: totalTime,
+    ascend: elevationGainFromCoords(merged),
+    segmentStartIdx: startIdx,
+    segmentEndIdx: startIdx + newLeg.points.length - 1,
+  };
 }
 
 function buildElevationModel(elevation: BuildContext['params']['terrain']['elevation']): unknown {
