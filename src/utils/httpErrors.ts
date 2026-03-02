@@ -23,16 +23,19 @@ export class RouteConstraintError extends HttpError {
   public readonly reason: ConstraintReason;
   public readonly explanation: string;
   public readonly suggestedDistanceMiles?: number;
+  public readonly suggestedShapes?: { shape: string; minDistanceMiles: number }[];
 
   constructor(opts: {
     reason: ConstraintReason;
     explanation: string;
     suggestedDistanceMiles?: number;
+    suggestedShapes?: { shape: string; minDistanceMiles: number }[];
   }) {
     super(422, 'ROUTE_CONSTRAINT', opts.explanation);
     this.reason = opts.reason;
     this.explanation = opts.explanation;
     this.suggestedDistanceMiles = opts.suggestedDistanceMiles;
+    this.suggestedShapes = opts.suggestedShapes;
   }
 }
 

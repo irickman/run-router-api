@@ -142,6 +142,7 @@ router.post('/route', async (req, res) => {
         reason: err.reason,
         explanation: err.explanation,
         suggestedDistanceMiles: err.suggestedDistanceMiles,
+        suggestedShapes: err.suggestedShapes,
       });
     }
     if (err instanceof HttpError) {
@@ -404,6 +405,10 @@ function targetMetersFromParams(params: RouteParametersParsed): number {
   return params.distance.value;
 }
 
-function profileFromParams(params: RouteParametersParsed): 'trail' | 'foot' {
-  return params.terrain.surfaces.some((s) => s.type === 'trail') ? 'trail' : 'foot';
+function profileFromParams(params: RouteParametersParsed): 'hike' | 'trail' | 'foot' {
+  const hasTrail = params.terrain.surfaces.some((s) => s.type === 'trail');
+  if (!hasTrail) return 'foot';
+  const elev = params.terrain.elevation.profile;
+  if (elev === 'hilly' || elev === 'mountainous') return 'hike';
+  return 'trail';
 }

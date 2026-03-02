@@ -18,6 +18,7 @@ interface BuildContext {
   start: [number, number];
   targetMeters: number;
   profile: Profile;
+  geocodedLandmarks?: Map<string, [number, number]>;
 }
 
 export interface BuiltRoute {
