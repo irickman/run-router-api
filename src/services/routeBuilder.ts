@@ -10,6 +10,7 @@ import { edgeKeys, penalizedRoute, sharedEdgeRatioSets, EdgeSet } from '../utils
 import { elevationGainFromCoords, haversineDistance, metersToMiles } from '../utils/geometry';
 import { smoothRoute } from '../utils/routeSmoothing';
 import { RouteConstraintError } from '../utils/httpErrors';
+import { fetchTrailNetworkWaypoints } from '../clients/overpassRouteRelations';
 
 interface BuildContext {
   params: RouteParametersParsed;
@@ -35,7 +36,22 @@ export async function buildRoute(ctx: BuildContext): Promise<BuiltRoute> {
   const elevationModel = buildElevationModel(ctx.params.terrain.elevation);
   const popularityModel = buildPopularityModel(ctx.params.preferences.crowdedness);
   const baseRoutingModel = mergeCustomModels(elevationModel, popularityModel);
-  const blockArea = await resolveAvoidBlockArea(ctx.start, ctx.params.location.avoidStreets);
+  let blockArea = await resolveAvoidBlockArea(ctx.start, ctx.params.location.avoidStreets);
+
+  // Phase B: enhance busy/quiet with trail network data
+  const crowdedness = ctx.params.preferences.crowdedness;
+  let trailWaypoints: [number, number][] = [];
+  if (crowdedness === 'busy' || crowdedness === 'quiet') {
+    try {
+      const trails = await fetchTrailNetworkWaypoints(ctx.start, ctx.targetMeters);
+      if (crowdedness === 'quiet' && trails.length > 0) {
+        const trailCircles = trails.map((t) => `${t.coordinates[1]},${t.coordinates[0]},80`);
+        blockArea = blockArea ? `${blockArea};${trailCircles.join(';')}` : trailCircles.join(';');
+      } else if (crowdedness === 'busy') {
+        trailWaypoints = trails.map((t) => t.coordinates);
+      }
+    } catch { /* Overpass failure is non-blocking; Phase A heuristic still applies */ }
+  }
 
   let best: BuiltRoute;
   try {
@@ -46,6 +62,8 @@ export async function buildRoute(ctx: BuildContext): Promise<BuiltRoute> {
         ),
         ctx.targetMeters,
       );
+    } else if (trailWaypoints.length > 0 && !useLandmark && shape !== 'point-to-point') {
+      best = await buildLandmarkLegs(ctx.start, trailWaypoints, shape, ctx.profile, baseRoutingModel, blockArea);
     } else {
       best = await buildRouteForShape(ctx, shape, false, baseRoutingModel, blockArea);
     }
@@ -212,7 +230,8 @@ async function landmarkRoute(
     waypointSet = fallbackPerimeter(ctx.start, ctx.targetMeters);
   } else {
     const perimeterBbox = bboxFromPoint(ctx.start);
-    const perimeterResult = await perimeterWaypoints(ctx.params.location.landmarks[0], perimeterBbox);
+    const traversalMode = ctx.params.location.landmarkTraversalModes?.[0];
+    const perimeterResult = await perimeterWaypoints(ctx.params.location.landmarks[0], perimeterBbox, traversalMode);
     if (perimeterResult.waypoints.length) {
       const maxPerimeter = Math.max(2, Math.ceil(ctx.targetMeters / 500));
       const capped = perimeterResult.waypoints.slice(0, Math.min(perimeterResult.waypoints.length, maxPerimeter));
@@ -681,17 +700,26 @@ function buildPopularityModel(
   if (crowdedness === 'busy') {
     return {
       priority: [
-        { if: 'popularity >= 1.3', multiply_by: '1.4' },
-        { if: 'popularity >= 1.1', multiply_by: '1.2' },
-        { if: 'popularity < 0.9 && popularity > 0', multiply_by: '0.7' },
+        { if: 'road_class == FOOTWAY || road_class == PEDESTRIAN', multiply_by: '1.4' },
+        { if: 'road_class == CYCLEWAY', multiply_by: '1.3' },
+        { if: 'road_class == PATH', multiply_by: '1.2' },
+        { if: 'surface == ASPHALT || surface == CONCRETE', multiply_by: '1.2' },
+        { if: 'road_environment == BRIDGE', multiply_by: '1.15' },
+        { if: 'road_class == TRACK', multiply_by: '0.8' },
+        { if: 'surface == DIRT || surface == GROUND', multiply_by: '0.8' },
       ],
     };
   }
   if (crowdedness === 'quiet') {
     return {
       priority: [
-        { if: 'popularity >= 1.3', multiply_by: '0.6' },
-        { if: 'popularity < 0.9 && popularity > 0', multiply_by: '1.3' },
+        { if: 'road_class == FOOTWAY || road_class == PEDESTRIAN', multiply_by: '0.7' },
+        { if: 'road_class == CYCLEWAY', multiply_by: '0.75' },
+        { if: 'road_class == TRACK', multiply_by: '1.3' },
+        { if: 'road_class == RESIDENTIAL', multiply_by: '1.15' },
+        { if: 'surface == GRAVEL || surface == COMPACTED', multiply_by: '1.2' },
+        { if: 'surface == DIRT || surface == GROUND', multiply_by: '1.25' },
+        { if: 'surface == ASPHALT || surface == CONCRETE', multiply_by: '0.85' },
       ],
     };
   }
@@ -699,15 +727,18 @@ function buildPopularityModel(
 }
 
 function mergeCustomModels(
-  ...models: (Record<string, unknown[]> | unknown | undefined)[]
-): Record<string, unknown[]> | undefined {
-  const merged: Record<string, unknown[]> = {};
+  ...models: (Record<string, unknown> | unknown | undefined)[]
+): Record<string, unknown> | undefined {
+  const merged: Record<string, unknown> = {};
   for (const model of models) {
     if (!model || typeof model !== 'object') continue;
-    for (const [key, value] of Object.entries(model as Record<string, unknown[]>)) {
-      if (!Array.isArray(value)) continue;
-      if (!merged[key]) merged[key] = [];
-      merged[key].push(...value);
+    for (const [key, value] of Object.entries(model as Record<string, unknown>)) {
+      if (Array.isArray(value)) {
+        if (!merged[key]) merged[key] = [];
+        (merged[key] as unknown[]).push(...value);
+      } else {
+        merged[key] = value;
+      }
     }
   }
   return Object.keys(merged).length > 0 ? merged : undefined;
