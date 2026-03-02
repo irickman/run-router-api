@@ -186,10 +186,12 @@ function minDistanceForShape(shape: string, distMeters: number): number {
 async function checkLandmarkFeasibility(ctx: BuildContext) {
   const bbox = bboxFromProximity(ctx.start, searchRadius(ctx.targetMeters));
   const shape = ctx.params.shape.type;
+  if (!ctx.geocodedLandmarks) ctx.geocodedLandmarks = new Map();
   for (const name of ctx.params.location.landmarks) {
     try {
       const [geo] = await geocodeWithFallback(name, ctx.start, bbox);
       if (!geo) continue;
+      ctx.geocodedLandmarks.set(name, geo.coordinates);
       const dist = haversineDistance(ctx.start, geo.coordinates);
       const minFeasible = minDistanceForShape(shape, dist);
       if (minFeasible > ctx.targetMeters * 1.2) {
@@ -224,11 +226,28 @@ async function buildRouteForShape(
   routingModel?: unknown,
   blockArea?: string
 ): Promise<BuiltRoute> {
-  if (hasLandmark) return await landmarkRoute(ctx, shape, routingModel, blockArea);
+  if (hasLandmark) {
+    if (shape === 'lollipop') {
+      return await lollipopRoute(ctx, routingModel, blockArea);
+    }
+    if ((shape === 'loop' || shape === 'flexible') && shouldAutoLollipop(ctx)) {
+      return await lollipopRoute(ctx, routingModel, blockArea);
+    }
+    return await landmarkRoute(ctx, shape, routingModel, blockArea);
+  }
   if (shape === 'point-to-point') return await pointToPoint(ctx, routingModel, blockArea);
   if (shape === 'out-and-back') return await outAndBack(ctx, routingModel, blockArea);
 
   return await loopRoute(ctx, routingModel, blockArea);
+}
+
+function shouldAutoLollipop(ctx: BuildContext): boolean {
+  if (!ctx.geocodedLandmarks?.size) return false;
+  const firstLandmark = ctx.params.location.landmarks[0];
+  const coords = ctx.geocodedLandmarks.get(firstLandmark);
+  if (!coords) return false;
+  const dist = haversineDistance(ctx.start, coords);
+  return dist > ctx.targetMeters * 0.3;
 }
 
 async function loopRoute(
@@ -343,6 +362,90 @@ async function landmarkRoute(
   }
 
   return best;
+}
+
+async function lollipopRoute(
+  ctx: BuildContext,
+  routingModel?: unknown,
+  blockArea?: string
+): Promise<BuiltRoute> {
+  const bbox = bboxFromProximity(ctx.start, searchRadius(ctx.targetMeters));
+  let landmarkCoord: [number, number] | undefined;
+
+  // Reuse cached geocode result if available
+  const landmarkName = ctx.params.location.landmarks[0];
+  if (ctx.geocodedLandmarks?.has(landmarkName)) {
+    landmarkCoord = ctx.geocodedLandmarks.get(landmarkName);
+  } else {
+    try {
+      const [geo] = await geocodeWithFallback(landmarkName, ctx.start, bbox);
+      if (geo && haversineDistance(ctx.start, geo.coordinates) < searchRadius(ctx.targetMeters)) {
+        landmarkCoord = geo.coordinates;
+      }
+    } catch { /* fall through to fallback */ }
+  }
+
+  if (!landmarkCoord) {
+    return await outAndBack(ctx, routingModel, blockArea);
+  }
+
+  // Step 1: Route start -> landmark (stem out)
+  const stemOut = await route([ctx.start, landmarkCoord], ctx.profile, {
+    customModel: routingModel,
+    blockArea,
+  });
+  const stemDistance = stemOut.distance;
+
+  // Step 2: Compute loop budget
+  const loopBudget = ctx.targetMeters - (2 * stemDistance);
+  if (loopBudget < Math.max(400, ctx.targetMeters * 0.15)) {
+    return await outAndBack(ctx, routingModel, blockArea);
+  }
+
+  // Step 3: Generate loop at landmark
+  let loop;
+  try {
+    loop = await generateLoop(landmarkCoord, loopBudget, ctx.profile, routingModel, blockArea);
+  } catch {
+    return await outAndBack(ctx, routingModel, blockArea);
+  }
+
+  // Step 4: Route landmark -> start with edge avoidance
+  const avoidedEdges = edgeKeys(stemOut.points);
+  const stemBack = await penalizedRoute(
+    [landmarkCoord, ctx.start],
+    ctx.profile,
+    avoidedEdges,
+    routingModel,
+    blockArea
+  );
+
+  // Step 5: Concatenate stem-out + loop + stem-back, removing duplicate junction points
+  const coordinates: [number, number, number?][] = [...stemOut.points];
+
+  // Append loop coordinates, skip first point if it matches end of stem-out
+  const loopCoords = loop.coordinates;
+  if (loopCoords.length > 0) {
+    const lastStem = coordinates[coordinates.length - 1];
+    const firstLoop = loopCoords[0];
+    const startIdx = (lastStem[0] === firstLoop[0] && lastStem[1] === firstLoop[1]) ? 1 : 0;
+    coordinates.push(...loopCoords.slice(startIdx));
+  }
+
+  // Append stem-back coordinates, skip first point if it matches end of loop
+  if (stemBack.points.length > 0) {
+    const lastCoord = coordinates[coordinates.length - 1];
+    const firstBack = stemBack.points[0];
+    const startIdx = (lastCoord[0] === firstBack[0] && lastCoord[1] === firstBack[1]) ? 1 : 0;
+    coordinates.push(...stemBack.points.slice(startIdx));
+  }
+
+  return {
+    coordinates,
+    distance: stemOut.distance + loop.totalDistance + stemBack.distance,
+    time: stemOut.time + loop.totalTime + stemBack.time,
+    ascend: (stemOut.ascend ?? 0) + loop.totalAscend + (stemBack.ascend ?? 0),
+  };
 }
 
 function farthestWaypointIndex(
