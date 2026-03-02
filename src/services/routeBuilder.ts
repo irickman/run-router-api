@@ -11,6 +11,7 @@ import { elevationGainFromCoords, haversineDistance, metersToMiles } from '../ut
 import { smoothRoute } from '../utils/routeSmoothing';
 import { RouteConstraintError } from '../utils/httpErrors';
 import { fetchTrailNetworkWaypoints } from '../clients/overpassRouteRelations';
+import { logInfo } from '../utils/logger';
 
 interface BuildContext {
   params: RouteParametersParsed;
@@ -63,9 +64,17 @@ export async function buildRoute(ctx: BuildContext): Promise<BuiltRoute> {
         ctx.targetMeters,
       );
     } else if (trailWaypoints.length > 0 && !useLandmark && shape !== 'point-to-point') {
-      best = await buildLandmarkLegs(ctx.start, trailWaypoints, shape, ctx.profile, baseRoutingModel, blockArea);
+      best = await correctDistance(
+        (_scaled) => buildLandmarkLegs(ctx.start, trailWaypoints, shape, ctx.profile, baseRoutingModel, blockArea),
+        ctx.targetMeters,
+      );
     } else {
-      best = await buildRouteForShape(ctx, shape, false, baseRoutingModel, blockArea);
+      best = await correctDistance(
+        (scaled) => buildRouteForShape(
+          { ...ctx, targetMeters: scaled }, shape, false, baseRoutingModel, blockArea
+        ),
+        ctx.targetMeters,
+      );
     }
   } catch (err) {
     if (err instanceof RouteConstraintError) throw err;
@@ -100,6 +109,9 @@ export async function buildRoute(ctx: BuildContext): Promise<BuiltRoute> {
       distance: best.distance - smoothed.distanceRemoved,
     };
   }
+  if (smoothed.distanceRemoved / best.distance > 0.1) {
+    logInfo("smoothing removed >10% distance", { removed: smoothed.distanceRemoved, original: best.distance });
+  }
 
   return best;
 }
@@ -133,7 +145,9 @@ async function correctDistance(
   return best!;
 }
 
-const MILES_25_METERS = 40_234;
+function searchRadius(targetMeters: number): number {
+  return Math.max(8_047, targetMeters * 2);
+}
 
 async function geocodeWithFallback(
   query: string,
@@ -142,7 +156,7 @@ async function geocodeWithFallback(
 ): Promise<GeocodeResult[]> {
   try {
     const results = await geocode(query, proximity, bbox);
-    if (results.length > 0 && haversineDistance(proximity, results[0].coordinates) < MILES_25_METERS) {
+    if (results.length > 0 && haversineDistance(proximity, results[0].coordinates) < 40_234) {
       return results;
     }
     const nomResults = await nominatimGeocode(query, proximity);
@@ -157,21 +171,43 @@ async function geocodeWithFallback(
   }
 }
 
+function minDistanceForShape(shape: string, distMeters: number): number {
+  switch (shape) {
+    case 'out-and-back': return distMeters * 2.4;
+    case 'point-to-point': return distMeters * 1.3;
+    case 'lollipop': return distMeters * 2.3;
+    case 'loop':
+    case 'flexible':
+    default: return distMeters * 2.6;
+  }
+}
+
 async function checkLandmarkFeasibility(ctx: BuildContext) {
-  const bbox = bboxFromProximity(ctx.start);
+  const bbox = bboxFromProximity(ctx.start, searchRadius(ctx.targetMeters));
+  const shape = ctx.params.shape.type;
   for (const name of ctx.params.location.landmarks) {
     try {
       const [geo] = await geocodeWithFallback(name, ctx.start, bbox);
       if (!geo) continue;
       const dist = haversineDistance(ctx.start, geo.coordinates);
-      const minFeasible = dist * 2 * 1.3;
-      if (minFeasible > ctx.targetMeters * 1.5) {
+      const minFeasible = minDistanceForShape(shape, dist);
+      if (minFeasible > ctx.targetMeters * 1.2) {
         const distMiles = Math.round(metersToMiles(dist) * 10) / 10;
         const suggestedMiles = Math.ceil(metersToMiles(minFeasible));
+
+        const ALL_SHAPES = ['loop', 'out-and-back', 'point-to-point', 'lollipop', 'flexible'];
+        const suggestedShapes = ALL_SHAPES
+          .filter((s) => s !== shape)
+          .map((s) => ({ shape: s, minDistanceMiles: Math.ceil(metersToMiles(minDistanceForShape(s, dist))) }))
+          .filter((s) => s.minDistanceMiles <= 100)
+          .filter((s) => s.minDistanceMiles < suggestedMiles)
+          .sort((a, b) => a.minDistanceMiles - b.minDistanceMiles);
+
         throw new RouteConstraintError({
           reason: 'LANDMARK_TOO_FAR',
-          explanation: `${name} is about ${distMiles} miles from your starting point. A round trip needs at least ~${suggestedMiles} miles.`,
+          explanation: `${name} is about ${distMiles} miles from your starting point. A ${shape} can't reach it at your target distance.`,
           suggestedDistanceMiles: suggestedMiles,
+          suggestedShapes: suggestedShapes.length > 0 ? suggestedShapes : undefined,
         });
       }
     } catch (err) {
@@ -214,12 +250,12 @@ async function landmarkRoute(
   routingModel?: unknown,
   blockArea?: string
 ): Promise<BuiltRoute> {
-  const bbox = bboxFromProximity(ctx.start);
+  const bbox = bboxFromProximity(ctx.start, searchRadius(ctx.targetMeters));
   const geocoded: [number, number][] = [];
   for (const name of ctx.params.location.landmarks) {
     try {
       const [geo] = await geocodeWithFallback(name, ctx.start, bbox);
-      if (geo && haversineDistance(ctx.start, geo.coordinates) < MILES_25_METERS) geocoded.push(geo.coordinates);
+      if (geo && haversineDistance(ctx.start, geo.coordinates) < searchRadius(ctx.targetMeters)) geocoded.push(geo.coordinates);
     } catch {
       // Landmark geocoding failures are non-blocking; perimeter fallback handles route continuity.
     }
@@ -510,9 +546,9 @@ async function resolveEnd(ctx: BuildContext): Promise<[number, number] | null> {
   const name = ctx.params.location.endPoint || ctx.params.location.landmarks[0];
   if (name) {
     try {
-      const bbox = bboxFromProximity(ctx.start);
+      const bbox = bboxFromProximity(ctx.start, searchRadius(ctx.targetMeters));
       const [geo] = await geocodeWithFallback(name, ctx.start, bbox);
-      if (geo && haversineDistance(ctx.start, geo.coordinates) < MILES_25_METERS) return geo.coordinates;
+      if (geo && haversineDistance(ctx.start, geo.coordinates) < searchRadius(ctx.targetMeters)) return geo.coordinates;
     } catch {
       // Start location fallback is intentional for point-to-point geocoding misses.
     }
@@ -549,7 +585,7 @@ async function resolveAvoidBlockArea(
     try {
       const [geo] = await geocode(street, start, bbox);
       if (!geo) continue;
-      if (haversineDistance(start, geo.coordinates) > MILES_25_METERS) continue;
+      if (haversineDistance(start, geo.coordinates) > 40_234) continue;
       const [lng, lat] = geo.coordinates;
       circles.push(`${lat},${lng},120`);
     } catch {
@@ -613,7 +649,7 @@ export async function refineSegment(
   try {
     const bbox = bboxFromProximity(midpoint);
     const [geo] = await geocode(instruction, midpoint, bbox);
-    if (geo && haversineDistance(midpoint, geo.coordinates) < MILES_25_METERS) {
+    if (geo && haversineDistance(midpoint, geo.coordinates) < 40_234) {
       routePoints.push(geo.coordinates);
     }
   } catch {

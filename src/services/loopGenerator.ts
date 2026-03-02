@@ -116,7 +116,7 @@ async function findFarPointCandidates(
     const res = await route([start, projected], profile, { customModel, blockArea });
     const endPoint = res.points.at(-1);
     if (!endPoint) continue;
-    if (res.distance < ideal * 0.7 || res.distance > ideal * 1.4) continue;
+    if (res.distance < ideal * 0.8 || res.distance > ideal * 1.25) continue;
 
     const coords: [number, number] = [endPoint[0], endPoint[1]];
     candidates.push({
