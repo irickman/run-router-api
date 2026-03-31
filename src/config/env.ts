@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const requiredEnv = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'MAPBOX_TOKEN', 'GRAPHHOPPER_URL', 'PORT'];
+const requiredEnv = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'MAPBOX_TOKEN', 'GRAPHHOPPER_URL', 'PORT', 'JWT_SECRET'];
 
 const defaultsForTest: Record<string, string> = {
   OPENAI_API_KEY: 'test',
@@ -10,6 +10,7 @@ const defaultsForTest: Record<string, string> = {
   MAPBOX_TOKEN: 'test',
   GRAPHHOPPER_URL: 'http://localhost:8989',
   PORT: '3000',
+  JWT_SECRET: 'test-secret-for-tests-only',
 };
 
 if (process.env.NODE_ENV === 'test') {
@@ -37,4 +38,9 @@ export const env = {
   requestLogSheetName: process.env.REQUEST_LOG_SHEET_NAME || 'request_log',
   googleAuthFile: process.env.GOOGLE_AUTH_FILE || 'google-auth.json',
   googleServiceAccountJson: process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '',
+  jwtSecret: process.env.JWT_SECRET!,
+  stravaClientId: process.env.STRAVA_CLIENT_ID || '',
+  stravaClientSecret: process.env.STRAVA_CLIENT_SECRET || '',
+  stravaRedirectUri: process.env.STRAVA_REDIRECT_URI || 'http://localhost:3000/api/auth/callback',
+  databaseUrl: process.env.DATABASE_URL || '',
 };

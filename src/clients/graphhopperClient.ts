@@ -2,7 +2,7 @@ import { env } from '../config/env';
 import { axios } from '../utils/http';
 import { logExternalError } from '../utils/logger';
 
-export type Profile = 'foot' | 'trail';
+export type Profile = 'foot' | 'trail' | 'hike';
 
 export interface RouteResponse {
   distance: number; // meters

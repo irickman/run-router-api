@@ -1,24 +1,31 @@
+import { v4 as uuidv4 } from 'uuid';
+import { db } from '../db';
+import { routes } from '../db/schema';
+import { and, eq } from 'drizzle-orm';
 import { RouteData } from '../models/routeParameters';
 
-const store = new Map<string, { data: RouteData; expiresAt: number }>();
-const TTL_MS = 24 * 60 * 60 * 1000;
-
-export function saveRoute(route: RouteData) {
-  const key = keyFor(route.sessionId, route.routeId);
-  store.set(key, { data: route, expiresAt: Date.now() + TTL_MS });
+export async function saveRoute(route: RouteData): Promise<void> {
+  const id = uuidv4();
+  await db.insert(routes).values({
+    id,
+    session_id: route.sessionId,
+    route_id: route.routeId,
+    user_id: route.userId ?? null,
+    name: route.name,
+    query: route.originalQuery,
+    parameters: JSON.stringify(route.parameters),
+    route_data: JSON.stringify(route),
+    created_at: route.createdAt,
+  });
 }
 
-export function getRoute(sessionId: string, routeId: string): RouteData | null {
-  const key = keyFor(sessionId, routeId);
-  const entry = store.get(key);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    store.delete(key);
-    return null;
-  }
-  return entry.data;
-}
+export async function getRoute(sessionId: string, routeId: string): Promise<RouteData | null> {
+  const rows = await db
+    .select({ route_data: routes.route_data })
+    .from(routes)
+    .where(and(eq(routes.session_id, sessionId), eq(routes.route_id, routeId)))
+    .limit(1);
 
-function keyFor(sessionId: string, routeId: string) {
-  return `route:${sessionId}:${routeId}`;
+  if (!rows.length) return null;
+  return JSON.parse(rows[0].route_data) as RouteData;
 }

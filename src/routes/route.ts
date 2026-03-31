@@ -74,6 +74,7 @@ router.post('/route', async (req, res) => {
     const routeData = {
       sessionId,
       routeId,
+      userId: req.user?.userId,
       geometry: { type: 'LineString' as const, coordinates: routeResult.coordinates },
       stats: {
         distance_miles: metersToMiles(distanceMeters),
@@ -88,7 +89,7 @@ router.post('/route', async (req, res) => {
       createdAt: new Date().toISOString(),
     };
 
-    saveRoute(routeData);
+    await saveRoute(routeData);
     const totalMs = Date.now() - requestStarted;
     logInfo('route generated', {
       sessionId,
@@ -176,8 +177,8 @@ router.post('/route', async (req, res) => {
   }
 });
 
-router.get('/route/:sessionId/:routeId', (req, res) => {
-  const route = getRoute(req.params.sessionId, req.params.routeId);
+router.get('/route/:sessionId/:routeId', async (req, res) => {
+  const route = await getRoute(req.params.sessionId, req.params.routeId);
   if (!route) {
     const missing = errorResponse(404, 'NOT_FOUND', 'Route not found');
     return res.status(missing.status).json(missing.body);
@@ -187,7 +188,7 @@ router.get('/route/:sessionId/:routeId', (req, res) => {
 
 router.post('/route/:sessionId/:routeId/refine', async (req, res) => {
   try {
-    const sourceRoute = getRoute(req.params.sessionId, req.params.routeId);
+    const sourceRoute = await getRoute(req.params.sessionId, req.params.routeId);
     if (!sourceRoute) {
       const missing = errorResponse(404, 'NOT_FOUND', 'Route not found');
       return res.status(missing.status).json(missing.body);
@@ -244,7 +245,7 @@ router.post('/route/:sessionId/:routeId/refine', async (req, res) => {
       createdAt: new Date().toISOString(),
     };
 
-    saveRoute(routeData);
+    await saveRoute(routeData);
     logInfo('route refined', {
       sessionId: routeData.sessionId,
       sourceRouteId: sourceRoute.routeId,
@@ -287,7 +288,7 @@ router.post('/route/:sessionId/:routeId/refine', async (req, res) => {
 
 router.post('/route/:sessionId/:routeId/refine-segment', async (req, res) => {
   try {
-    const sourceRoute = getRoute(req.params.sessionId, req.params.routeId);
+    const sourceRoute = await getRoute(req.params.sessionId, req.params.routeId);
     if (!sourceRoute) {
       const missing = errorResponse(404, 'NOT_FOUND', 'Route not found');
       return res.status(missing.status).json(missing.body);
@@ -342,7 +343,7 @@ router.post('/route/:sessionId/:routeId/refine-segment', async (req, res) => {
       createdAt: new Date().toISOString(),
     };
 
-    saveRoute(routeData);
+    await saveRoute(routeData);
     logInfo('segment refined', {
       sessionId: routeData.sessionId,
       sourceRouteId: sourceRoute.routeId,
@@ -385,8 +386,8 @@ router.post('/route/:sessionId/:routeId/refine-segment', async (req, res) => {
   }
 });
 
-router.get('/route/:sessionId/:routeId/gpx', (req, res) => {
-  const route = getRoute(req.params.sessionId, req.params.routeId);
+router.get('/route/:sessionId/:routeId/gpx', async (req, res) => {
+  const route = await getRoute(req.params.sessionId, req.params.routeId);
   if (!route) {
     const missing = errorResponse(404, 'NOT_FOUND', 'Route not found');
     return res.status(missing.status).json(missing.body);
