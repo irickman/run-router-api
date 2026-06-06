@@ -1,7 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
+import { and, eq } from 'drizzle-orm';
+
 import { db } from '../db';
 import { routes } from '../db/schema';
-import { and, eq } from 'drizzle-orm';
 import { RouteData } from '../models/routeParameters';
 
 export async function saveRoute(route: RouteData): Promise<void> {

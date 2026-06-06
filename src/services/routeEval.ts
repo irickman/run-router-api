@@ -1,8 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
+import type { TextBlock } from '@anthropic-ai/sdk/resources/messages';
 
 import { env } from '../config/env';
-import { logEval } from './requestLogger';
 import { logError } from '../utils/logger';
+
+import { logEval } from './requestLogger';
 
 const client = new Anthropic({ apiKey: env.anthropicKey });
 
@@ -24,7 +26,14 @@ interface EvalInput {
   elevationGainFt: number;
 }
 
+interface RouteEvalResponse {
+  pass: boolean;
+  score: number;
+  evaluation: string;
+}
+
 export function evaluateRoute(input: EvalInput) {
+  if (env.nodeEnv === 'test') return;
   runEval(input).catch((err) => {
     logError('route eval failed', { error: err instanceof Error ? err.message : String(err) });
   });
@@ -52,12 +61,12 @@ Distance accuracy: ${accuracyPct > 0 ? '+' : ''}${accuracyPct}%`,
   });
 
   const text = response.content
-    .filter((c: any) => c.type === 'text')
-    .map((c: any) => c.text)
+    .filter((c): c is TextBlock => c.type === 'text')
+    .map((c) => c.text)
     .join('')
     .trim();
 
-  const json = JSON.parse(text.replace(/```json\n?|\n?```/g, '').trim());
+  const json = JSON.parse(text.replace(/```json\n?|\n?```/g, '').trim()) as RouteEvalResponse;
 
   logEval({
     timestamp: new Date().toISOString(),

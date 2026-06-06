@@ -1,5 +1,6 @@
 import { route, Profile } from '../clients/graphhopperClient';
 import { elevationGainFromCoords } from '../utils/geometry';
+import { logInfo } from '../utils/logger';
 import { edgeKeys, penalizedRoute, sharedEdgeRatioSets, EdgeSet } from '../utils/sharedEdges';
 
 interface Candidate {
@@ -25,10 +26,19 @@ function generateBearings(count: number, offsetDeg = 0): number[] {
   const bearings: number[] = [];
   const baseStep = 360 / count;
   for (let i = 0; i < count; i++) {
-    const jitter = (Math.random() - 0.5) * 8;
-    bearings.push(normalizeBearing(i * baseStep + offsetDeg + jitter));
+    bearings.push(normalizeBearing(i * baseStep + offsetDeg));
   }
   return bearings;
+}
+
+function candidateBearings(count: number): number[] {
+  if (count <= 16) return generateBearings(count);
+
+  const half = Math.floor(count / 2);
+  return [
+    ...generateBearings(half),
+    ...generateBearings(count - half, 360 / count),
+  ];
 }
 
 function project(start: [number, number], bearingDeg: number, distanceMeters: number): [number, number] {
@@ -105,18 +115,28 @@ async function findFarPointCandidates(
   waypointDistanceMeters: number,
   profile: Profile,
   customModel?: unknown,
-  blockArea?: string
+  blockArea?: string,
+  bearingCount = 24
 ): Promise<Candidate[]> {
   const ideal = Math.max(250, waypointDistanceMeters);
-  const bearings = [...generateBearings(12), ...generateBearings(12, 15)];
+  const bearings = candidateBearings(bearingCount);
   const candidates: Candidate[] = [];
 
   for (const bearing of bearings) {
     const projected = project(start, bearing, ideal);
-    const res = await route([start, projected], profile, { customModel, blockArea });
+    let res;
+    try {
+      res = await route([start, projected], profile, {
+        customModel,
+        blockArea,
+        allowMapboxFallback: profile !== 'foot',
+      });
+    } catch {
+      continue;
+    }
     const endPoint = res.points.at(-1);
     if (!endPoint) continue;
-    if (res.distance < ideal * 0.8 || res.distance > ideal * 1.25) continue;
+    if (res.distance < ideal * 0.7 || res.distance > ideal * 1.4) continue;
 
     const coords: [number, number] = [endPoint[0], endPoint[1]];
     candidates.push({
@@ -172,7 +192,8 @@ function toWaypointSetKey(points: [number, number][]): string {
 function buildWaypointSets(
   candidates: Candidate[],
   count: number,
-  targetLegDistance: number
+  targetLegDistance: number,
+  maxSets = 2
 ): [number, number][][] {
   const sets: [number, number][][] = [];
   const seen = new Set<string>();
@@ -186,6 +207,7 @@ function buildWaypointSets(
     if (seen.has(key)) continue;
     seen.add(key);
     sets.push(waypoints);
+    if (sets.length >= maxSets) return sets;
   }
 
   if (!sets.length && candidates.length >= count) {
@@ -220,7 +242,6 @@ async function buildCircuit(
   for (let i = 0; i < legs.length - 1; i++) {
     const legPoints: [number, number][] = [legs[i], legs[i + 1]];
     const primary = await route(legPoints, profile, {
-      alternative: true,
       customModel,
       blockArea,
     });
@@ -271,6 +292,18 @@ function attractiveness(circuit: Circuit): number {
   return Math.max(0, 1 - Math.abs(totalAngle - ideal) / ideal);
 }
 
+function distanceErrorPct(circuit: Circuit, targetDistanceMeters: number): number {
+  return Math.abs(circuit.totalDistance - targetDistanceMeters) / targetDistanceMeters;
+}
+
+function isGoodEnoughCircuit(
+  circuit: Circuit,
+  targetDistanceMeters: number,
+  tolerancePct: number
+): boolean {
+  return circuit.overlapRatio <= 0.10 && distanceErrorPct(circuit, targetDistanceMeters) <= tolerancePct;
+}
+
 export async function generateLoop(
   start: [number, number],
   targetDistanceMeters: number,
@@ -280,8 +313,13 @@ export async function generateLoop(
 ): Promise<Circuit> {
   const primaryWaypointCount = targetDistanceMeters >= 11_000 ? 4 : 3;
   const waypointCounts = [primaryWaypointCount, primaryWaypointCount === 4 ? 3 : 4];
-  const distanceScales = [0.9, 1.0, 1.1];
+  const longLoop = targetDistanceMeters >= 11_000;
+  const distanceScales = longLoop ? [1.0, 0.9, 1.1, 1.25, 0.75] : [0.7, 0.85, 1.0, 1.15];
+  const bearingCount = longLoop ? 16 : 24;
+  const maxWaypointSets = longLoop ? 2 : 2;
+  const acceptableDistancePct = longLoop ? 0.12 : 0.08;
   const circuits: Circuit[] = [];
+  const diagnostics: Array<Record<string, number>> = [];
 
   for (const count of waypointCounts) {
     for (const scale of distanceScales) {
@@ -291,22 +329,35 @@ export async function generateLoop(
         waypointDistance,
         profile,
         customModel,
-        blockArea
+        blockArea,
+        bearingCount
       );
+      diagnostics.push({ count, scale, waypointDistance, candidates: candidates.length });
       if (candidates.length < count) continue;
 
-      const waypointSets = buildWaypointSets(candidates, count, waypointDistance);
+      const waypointSets = buildWaypointSets(candidates, count, waypointDistance, maxWaypointSets);
+      diagnostics[diagnostics.length - 1].waypointSets = waypointSets.length;
       for (const waypointSet of waypointSets) {
-        circuits.push(await buildCircuit(start, waypointSet, profile, customModel, blockArea));
-        circuits.push(
-          await buildCircuit(start, [...waypointSet].reverse(), profile, customModel, blockArea)
-        );
+        const forward = await buildCircuit(start, waypointSet, profile, customModel, blockArea);
+        circuits.push(forward);
+        if (isGoodEnoughCircuit(forward, targetDistanceMeters, acceptableDistancePct)) return forward;
+
+        const reverse = await buildCircuit(start, [...waypointSet].reverse(), profile, customModel, blockArea);
+        circuits.push(reverse);
+        if (isGoodEnoughCircuit(reverse, targetDistanceMeters, acceptableDistancePct)) return reverse;
       }
     }
-    if (circuits.length) break;
   }
 
-  if (!circuits.length) throw new Error('No circuit found');
+  if (!circuits.length) {
+    logInfo('loop generation found no circuits', {
+      targetDistanceMeters,
+      profile,
+      longLoop,
+      diagnostics,
+    });
+    throw new Error('No circuit found');
+  }
 
   circuits.sort((a, b) => {
     const distanceDelta =
@@ -318,7 +369,16 @@ export async function generateLoop(
   });
 
   const best = circuits[0];
-  if (best.overlapRatio > 0.25) {
+  if (best.overlapRatio > 0.25 && distanceErrorPct(best, targetDistanceMeters) > 0.35) {
+    logInfo('loop generation rejected best circuit for overlap', {
+      targetDistanceMeters,
+      profile,
+      longLoop,
+      circuitCount: circuits.length,
+      bestDistance: best.totalDistance,
+      bestOverlapRatio: best.overlapRatio,
+      diagnostics,
+    });
     throw new Error('No circuit found with acceptable overlap');
   }
 

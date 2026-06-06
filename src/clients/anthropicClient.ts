@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import type { ContentBlock, TextBlock, Tool, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
 
 import { env } from '../config/env';
 import { RouteParametersParsed, RouteParametersSchema } from '../utils/jsonSchema';
@@ -46,6 +47,7 @@ Generate a short, creative running route name.
 
 const client = new Anthropic({ apiKey: env.anthropicKey });
 const schemaJson = RouteParametersJsonSchema;
+const inputSchema = schemaJson as unknown as Tool.InputSchema;
 
 export async function extractParametersWithAnthropic(query: string): Promise<RouteParametersParsed> {
   try {
@@ -56,7 +58,7 @@ export async function extractParametersWithAnthropic(query: string): Promise<Rou
       {
         name: 'extract_route_parameters',
         description: 'Extract structured route parameters from user query',
-        input_schema: schemaJson as any,
+        input_schema: inputSchema,
       },
       ],
       tool_choice: { type: 'tool', name: 'extract_route_parameters' },
@@ -85,7 +87,7 @@ export async function refineParametersWithAnthropic(
         {
           name: 'refine_route_parameters',
           description: 'Refine route parameters based on user instruction',
-          input_schema: schemaJson as any,
+          input_schema: inputSchema,
         },
       ],
       tool_choice: { type: 'tool', name: 'refine_route_parameters' },
@@ -139,8 +141,8 @@ Elevation gain: ${Math.round(input.elevationGainFeet)} feet`,
     });
 
     const text = response.content
-      .filter((c: any) => c.type === 'text')
-      .map((c: any) => c.text)
+      .filter((c): c is TextBlock => c.type === 'text')
+      .map((c) => c.text)
       .join(' ')
       .trim();
 
@@ -152,7 +154,7 @@ Elevation gain: ${Math.round(input.elevationGainFeet)} feet`,
   }
 }
 
-function toolInput(content: any[]): unknown {
-  const toolUse = content.find((c: any) => c.type === 'tool_use') as { input?: unknown } | undefined;
+function toolInput(content: ContentBlock[]): unknown {
+  const toolUse = content.find((c): c is ToolUseBlock => c.type === 'tool_use');
   return toolUse?.input ?? null;
 }

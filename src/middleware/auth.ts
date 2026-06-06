@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { SignJWT, jwtVerify } from 'jose';
+
 import { env } from '../config/env';
 
 export interface JwtPayload {

@@ -1,5 +1,5 @@
 export type DistancePrecision = 'exact' | 'approximate' | 'minimum' | 'maximum';
-export type ShapeType = 'loop' | 'out-and-back' | 'point-to-point' | 'flexible';
+export type ShapeType = 'loop' | 'out-and-back' | 'point-to-point' | 'lollipop' | 'flexible';
 export type ShapePreference = 'circular' | 'lollipop' | 'figure-eight' | null;
 export type SurfaceType = 'trail' | 'paved' | 'gravel' | 'mixed';
 export type SurfacePreference = 'required' | 'preferred' | 'acceptable' | 'avoid';
@@ -17,7 +17,7 @@ export interface RouteParameters {
     startPoint: string | null;
     endPoint: string | null;
     landmarks: string[];
-    avoidStreets?: string[];
+    avoidStreets: string[];
     neighborhood: string | null;
     region: string | null;
   };

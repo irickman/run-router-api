@@ -33,7 +33,7 @@ export interface RequestLogEntry {
 const FLUSH_INTERVAL_MS = 10_000;
 const MAX_BUFFER_SIZE = 20;
 
-let buffer: unknown[][] = [];
+const buffer: unknown[][] = [];
 let flushTimer: NodeJS.Timeout | null = null;
 let jwtClient: JWT | null = null;
 

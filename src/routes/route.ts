@@ -45,7 +45,11 @@ router.post('/route', async (req, res) => {
         const bbox = bboxFromProximity(start);
         let startGeo = await geocode(params.location.startPoint, start, bbox);
         if (!startGeo[0] || haversineDistance(start, startGeo[0].coordinates) >= 40_234) {
-          try { startGeo = await nominatimGeocode(params.location.startPoint, start); } catch {}
+          try {
+            startGeo = await nominatimGeocode(params.location.startPoint, start);
+          } catch {
+            startGeo = [];
+          }
         }
         if (startGeo[0] && haversineDistance(start, startGeo[0].coordinates) < 40_234) start = startGeo[0].coordinates;
       } catch {

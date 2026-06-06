@@ -114,6 +114,10 @@ function heuristicParse(query: string): RouteParametersParsed {
   } else if (/\b5k\b/i.test(normalized)) {
     value = 5;
     unit = 'kilometers';
+  } else if (distMatch) {
+    value = parseFloat(distMatch[1]);
+    const u = distMatch[2].toLowerCase();
+    if (u.startsWith('k')) unit = 'kilometers';
   } else if (/long run/i.test(normalized)) {
     value = 10;
     unit = 'miles';
@@ -123,10 +127,6 @@ function heuristicParse(query: string): RouteParametersParsed {
   } else if (/easy run/i.test(normalized)) {
     value = 4;
     unit = 'miles';
-  } else if (distMatch) {
-    value = parseFloat(distMatch[1]);
-    const u = distMatch[2].toLowerCase();
-    if (u.startsWith('k')) unit = 'kilometers';
   }
 
   const startPoint = extractIntentTarget(normalized, /(?:from|starting at)\s+([^,.;]+)/i);
@@ -205,10 +205,10 @@ function extractIntentTarget(input: string, pattern: RegExp): string | null {
 }
 
 function extractMaxGain(input: string): number | null {
-  const feetMatch = input.match(/(?:no more than|max(?:imum)?|under)\s+(\d+)\s*(?:ft|feet)/i);
+  const feetMatch = input.match(/(?:no more than|less than|max(?:imum)?|under)\s+(\d+)\s*(?:ft|feet)/i);
   if (feetMatch) return Number(feetMatch[1]) * 0.3048;
 
-  const metersMatch = input.match(/(?:no more than|max(?:imum)?|under)\s+(\d+)\s*(?:m|meters)/i);
+  const metersMatch = input.match(/(?:no more than|less than|max(?:imum)?|under)\s+(\d+)\s*(?:m|meters)/i);
   if (metersMatch) return Number(metersMatch[1]);
   return null;
 }

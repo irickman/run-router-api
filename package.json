@@ -10,7 +10,8 @@
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "evals:run": "tsx src/evals/runSheetEvals.ts"
+    "evals:run": "tsx src/evals/runSheetEvals.ts",
+    "evals:fetch-reference-gpx": "tsx src/evals/fetchStravaReferenceGpx.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",

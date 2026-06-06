@@ -2,12 +2,20 @@ import { LRUCache } from 'lru-cache';
 
 import { axios } from '../utils/http';
 import { logExternalError } from '../utils/logger';
+
 import { GeocodeResult, bboxFromProximity } from './mapboxClient';
 
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org';
 const cache = new LRUCache<string, GeocodeResult[]>({ max: 200, ttl: 1000 * 60 * 60 * 24 });
 
 let lastCallTime = 0;
+
+interface NominatimPlace {
+  display_name: string;
+  lon: string;
+  lat: string;
+  boundingbox?: [string, string, string, string];
+}
 
 async function rateLimit() {
   const now = Date.now();
@@ -44,7 +52,7 @@ export async function nominatimGeocode(
       timeout: 10000,
     });
 
-    let data = res.data as any[];
+    let data = res.data as NominatimPlace[];
 
     if (proximity && data.length === 0) {
       delete params.bounded;
@@ -54,10 +62,10 @@ export async function nominatimGeocode(
         headers: { 'User-Agent': 'RunRouter/1.0' },
         timeout: 10000,
       });
-      data = res2.data as any[];
+      data = res2.data as NominatimPlace[];
     }
 
-    const results: GeocodeResult[] = data.map((item: any) => ({
+    const results: GeocodeResult[] = data.map((item) => ({
       name: item.display_name,
       coordinates: [parseFloat(item.lon), parseFloat(item.lat)] as [number, number],
       bbox: item.boundingbox

@@ -23,13 +23,13 @@ export const RouteParametersJsonSchema = {
         neighborhood: { type: ['string', 'null'] },
         region: { type: ['string', 'null'] },
       },
-      required: ['startPoint', 'endPoint', 'landmarks', 'neighborhood', 'region'],
+      required: ['startPoint', 'endPoint', 'landmarks', 'avoidStreets', 'neighborhood', 'region'],
       additionalProperties: false,
     },
     shape: {
       type: 'object',
       properties: {
-        type: { type: 'string', enum: ['loop', 'out-and-back', 'point-to-point', 'flexible'] },
+        type: { type: 'string', enum: ['loop', 'out-and-back', 'point-to-point', 'lollipop', 'flexible'] },
         preference: {
           anyOf: [
             { type: 'string', enum: ['circular', 'lollipop', 'figure-eight'] },

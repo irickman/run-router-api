@@ -5,6 +5,8 @@ node_modules
 dist
 gh-data
 tmp-schema.ts
+data/
+eval-artifacts/
 .DS_Store
 
 # iOS build artifacts (Capacitor)

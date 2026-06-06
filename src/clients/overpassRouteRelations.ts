@@ -6,6 +6,7 @@ export interface TrailWaypoint {
 }
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+const OVERPASS_ROUTE_RELATIONS_TIMEOUT_MS = Number(process.env.OVERPASS_ROUTE_RELATIONS_TIMEOUT_MS || 5000);
 
 export async function fetchTrailNetworkWaypoints(
   center: [number, number],
@@ -25,7 +26,13 @@ export async function fetchTrailNetworkWaypoints(
     const response = await axios.post<{ elements: Array<{ center?: { lat: number; lon: number } }> }>(
       OVERPASS_URL,
       `data=${encodeURIComponent(query)}`,
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 12000 }
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'RouteRunnerEval/0.1 (route quality verification)',
+        },
+        timeout: OVERPASS_ROUTE_RELATIONS_TIMEOUT_MS,
+      }
     );
 
     return response.data.elements

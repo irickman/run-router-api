@@ -1,18 +1,29 @@
+import * as fs from 'fs';
+import path from 'path';
+
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
-import path from 'path';
+
 import * as schema from './schema';
 
-const dbPath = process.env.DATABASE_URL || path.join(process.cwd(), 'data', 'routes.db');
+function defaultDbPath(): string {
+  if (process.env.NODE_ENV === 'test') {
+    const workerId = process.env.VITEST_WORKER_ID || '0';
+    return path.join(process.cwd(), 'data', `routes-test-${workerId}.db`);
+  }
 
-// Ensure data directory exists
-import fs from 'fs';
+  return path.join(process.cwd(), 'data', 'routes.db');
+}
+
+const dbPath = process.env.DATABASE_URL || defaultDbPath();
+
 const dataDir = path.dirname(dbPath);
-if (!fs.existsSync(dataDir)) {
+if (dbPath !== ':memory:' && !fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
 const sqlite = new Database(dbPath);
+sqlite.pragma('busy_timeout = 5000');
 sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
 
@@ -87,3 +98,5 @@ export function initializeSchema() {
   sqlite.prepare(createFeedback).run();
   sqlite.prepare(createUserPreferences).run();
 }
+
+initializeSchema();

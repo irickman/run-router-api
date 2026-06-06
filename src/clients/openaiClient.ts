@@ -8,7 +8,9 @@ import { RouteParametersJsonSchema } from '../utils/routeParametersSchemaJson';
 const SYSTEM_PROMPT = `
 You are a running-route parameter extractor.
 - Output MUST follow the RouteParameters JSON schema.
-- Defaults: region Seattle, WA (47.6062, -122.3321) when unspecified; shape loop when unspecified.
+- Infer region from named landmarks, neighborhoods, parks, cities, or trails when possible; do not force Seattle for recognizable non-Seattle places.
+- Defaults: region Seattle, WA (47.6062, -122.3321) only when the query gives no location signal; shape loop when unspecified.
+- Known location cues: Lake Waneka => Lafayette, CO; Alberta District => Portland, OR; American Camp or Friday Harbor => San Juan Island, WA; Rock Creek Park/National Mall/Anacostia River Trail/Rachel Carson Greenway Trail => Washington, DC area.
 - Distance keywords: 5k=5 km, 10k=10 km, half marathon=13.1 miles, marathon=26.2 miles, long run=8-12 miles, short run=2-4 miles, easy run=3-5 miles.
 - Terrain/elevation cues: "trail" => surface trail, "flat" => elevation profile flat, "hilly" => hilly.
 - Extract landmarks mentioned (use array).

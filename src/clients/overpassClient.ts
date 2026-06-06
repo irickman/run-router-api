@@ -10,6 +10,7 @@ const OVERPASS_ENDPOINTS = [
   'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
 ];
+const OVERPASS_TIMEOUT_MS = Number(process.env.OVERPASS_TIMEOUT_MS || 8000);
 
 export type FeatureType = 'water' | 'park' | 'other';
 
@@ -50,8 +51,11 @@ export async function fetchPerimeterAndTrails(
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
       const res = await axios.post(endpoint, `data=${encodeURIComponent(query)}`, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        timeout: 30000,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'RouteRunnerEval/0.1 (route quality verification)',
+        },
+        timeout: OVERPASS_TIMEOUT_MS,
       });
       const parsed = parseOverpass(res.data as { elements?: OverpassElement[] }, name);
       if (parsed) cache.set(key, parsed);

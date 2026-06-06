@@ -1,7 +1,8 @@
 import { Router } from 'express';
+import { eq } from 'drizzle-orm';
+
 import { db } from '../db';
 import { users } from '../db/schema';
-import { eq } from 'drizzle-orm';
 import { getStravaAuthUrl, exchangeStravaCode, upsertUserFromStrava } from '../services/stravaAuth';
 import { signJwt, requireAuth } from '../middleware/auth';
 

@@ -26,7 +26,13 @@ type RouteRequest = {
 export async function route(
   points: [number, number][],
   profile: Profile,
-  opts: { algorithm?: string; alternative?: boolean; customModel?: unknown; blockArea?: string } = {}
+  opts: {
+    algorithm?: string;
+    alternative?: boolean;
+    customModel?: unknown;
+    blockArea?: string;
+    allowMapboxFallback?: boolean;
+  } = {}
 ): Promise<RouteResponse> {
   try {
     const body: RouteRequest = {
@@ -68,6 +74,78 @@ export async function route(
       alternative: Boolean(opts.alternative),
       hasBlockArea: Boolean(opts.blockArea),
     });
+    const fallback = opts.allowMapboxFallback === false ? null : await routeWithMapboxWalking(points, err);
+    if (fallback) return fallback;
     throw err;
   }
+}
+
+async function routeWithMapboxWalking(
+  points: [number, number][],
+  originalError: unknown
+): Promise<RouteResponse | null> {
+  if (points.length < 2 || points.length > 25 || !isGraphCoverageFailure(originalError)) return null;
+
+  try {
+    const coordinates = points.map((point) => point.join(',')).join(';');
+    const res = await axios.get(
+      `https://api.mapbox.com/directions/v5/mapbox/walking/${coordinates}`,
+      {
+        params: {
+          access_token: env.mapboxToken,
+          geometries: 'geojson',
+          overview: 'full',
+          steps: false,
+        },
+        timeout: 15000,
+      }
+    );
+    const routeData = res.data.routes?.[0];
+    const coords = routeData?.geometry?.coordinates;
+    if (!routeData || !Array.isArray(coords) || coords.length < 2) return null;
+    return {
+      distance: routeData.distance,
+      time: routeData.duration * 1000,
+      points: coords.map((coord: [number, number]) => [coord[0], coord[1]] as [number, number]),
+      ascend: 0,
+    };
+  } catch (err) {
+    logExternalError('mapbox-directions', err, { points });
+    return null;
+  }
+}
+
+function isGraphCoverageFailure(err: unknown): boolean {
+  const message = [
+    err instanceof Error ? err.message : '',
+    responseMessage(err),
+  ].join(' ').toLowerCase();
+
+  return (
+    message.includes('cannot find point') ||
+    message.includes('pointnotfoundexception') ||
+    message.includes('connection between locations not found') ||
+    message.includes('connectionnotfoundexception')
+  );
+}
+
+function responseMessage(err: unknown): string {
+  if (!err || typeof err !== 'object') return '';
+  const response = 'response' in err ? (err as { response?: unknown }).response : null;
+  if (!response || typeof response !== 'object') return '';
+  const data = 'data' in response ? (response as { data?: unknown }).data : null;
+  if (!data || typeof data !== 'object') return '';
+  const message = 'message' in data ? (data as { message?: unknown }).message : '';
+  const hints = 'hints' in data ? (data as { hints?: unknown }).hints : null;
+  const hintText = Array.isArray(hints)
+    ? hints
+        .map((hint) => {
+          if (!hint || typeof hint !== 'object') return '';
+          const hintMessage = 'message' in hint ? (hint as { message?: unknown }).message : '';
+          const details = 'details' in hint ? (hint as { details?: unknown }).details : '';
+          return `${String(hintMessage || '')} ${String(details || '')}`;
+        })
+        .join(' ')
+    : '';
+  return `${String(message || '')} ${hintText}`;
 }

@@ -1,4 +1,5 @@
 import { route, Profile } from '../clients/graphhopperClient';
+
 import { hasHairpin } from './routeSmoothing';
 
 export type EdgeSet = Set<string>;
@@ -31,11 +32,16 @@ export async function penalizedRoute(
   blockArea?: string
 ) {
   // Primary link-penalty path: GraphHopper alternatives.
-  const alt = await route(points, profile, {
-    alternative: true,
-    customModel,
-    blockArea,
-  });
+  let alt;
+  try {
+    alt = await route(points, profile, {
+      alternative: true,
+      customModel,
+      blockArea,
+    });
+  } catch {
+    alt = await route(points, profile, { customModel, blockArea });
+  }
   const altOverlap = sharedEdgeRatioSets(avoidedEdges, edgeKeys(alt.points));
   if (altOverlap <= 0.05 || points.length !== 2) return alt;
 
